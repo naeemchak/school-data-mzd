@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>School Data MZD</title>
+<meta name="theme-color" content="#14532d">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#f5f6f2;--card:#fff;--ink:#1c2420;--mute:#5d6b63;--line:#dfe4dd;--brand:#14532d;--brand2:#e7f2ea;--warn:#9a3412;--warnbg:#fff1e6;--ok:#166534;--okbg:#e8f6ec;--r:12px}
+@media (prefers-color-scheme:dark){:root{--bg:#121614;--card:#1b211e;--ink:#e6ece8;--mute:#9aa8a0;--line:#2c3530;--brand:#4ade80;--brand2:#1f3326;--warn:#fdba74;--warnbg:#3a2516;--ok:#86efac;--okbg:#18301f}}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--brand);color:#fff;padding:10px 16px calc(10px);display:flex;align-items:center;gap:10px}
+@media (prefers-color-scheme:dark){header{color:#0b1a10}}
+header h1{font-size:16px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{background:transparent;border:0;color:inherit;font-size:22px;padding:2px 6px}
+#sync{font-size:12px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);white-space:nowrap}
+main{max-width:760px;margin:0 auto;padding:14px 16px 90px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:0 0 12px}
+.card h2{font-size:16px;margin:0 0 8px}.card h3{font-size:14px;margin:14px 0 6px;color:var(--mute);text-transform:uppercase;letter-spacing:.03em}
+.ur{font-family:"Noto Nastaliq Urdu","Jameel Noori Nastaleeq",serif;direction:rtl;font-size:14px;color:var(--mute)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 12px;text-align:left;font:inherit;color:inherit;min-height:84px}
+.tile b{display:block;font-size:15px}.tile small{color:var(--mute)}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 3px}
+input,select,textarea{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+input:focus,select:focus{outline:2px solid var(--brand);border-color:transparent}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{display:inline-block;font:inherit;font-weight:600;border:0;border-radius:10px;padding:11px 16px;background:var(--brand);color:#fff;margin:6px 6px 0 0}
+@media (prefers-color-scheme:dark){.btn{color:#0b1a10}}
+.btn.alt{background:var(--brand2);color:var(--ink)}.btn.warn{background:var(--warnbg);color:var(--warn)}.btn.full{width:100%;margin:12px 0 0}
+.list .it{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.list .it:last-child{border:0}
+.it .grow{flex:1;min-width:0}.it .sub{font-size:13px;color:var(--mute)}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--brand2);white-space:nowrap}.badge.w{background:var(--warnbg);color:var(--warn)}.badge.o{background:var(--okbg);color:var(--ok)}
+.msg{padding:10px 12px;border-radius:8px;margin:8px 0;font-size:14px}.msg.w{background:var(--warnbg);color:var(--warn)}.msg.o{background:var(--okbg);color:var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
+th{font-size:12px;color:var(--mute);font-weight:600}td input{padding:7px 5px;text-align:center;min-width:44px}
+.scroll{overflow-x:auto;margin:0 -4px}.num{text-align:right}.muted{color:var(--mute);font-size:13px}
+.hist{border:1px dashed var(--line);border-radius:8px;padding:8px;margin:8px 0}
+.sb{border-bottom:1px solid var(--line);padding:10px 0}.bands{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:6px}
+.bands div{display:flex;flex-direction:column;align-items:center}.bands span{font-size:11px;color:var(--mute)}.bands input{padding:8px 2px;text-align:center}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;transition:.3s;pointer-events:none;max-width:90%}
+#toast.on{opacity:.95}
+</style>
+</head>
+<body>
+<header><button id="back" aria-label="Back" hidden>‹</button><h1 id="title">School Data</h1><span id="sync"></span></header>
+<main id="app"></main>
+<div id="toast"></div>
+<script src="config.js"></script>
+<script src="scheme.js"></script>
+<script src="app.js"></script>
+<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');</script>
+</body>
+</html>
