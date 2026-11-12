@@ -8,7 +8,7 @@ const LS = {
   set(k, v) { try { localStorage.setItem('sds_' + k, JSON.stringify(v)); } catch (e) { toast('Phone storage full'); } },
   del(k) { try { localStorage.removeItem('sds_' + k); } catch (e) { } }
 };
-const S = { token: LS.get('token'), user: LS.get('user'), boot: LS.get('boot'), emis: LS.get('emis'), view: 'home', arg: null, stack: [] };
+const S = { operator: LS.get('operator', ''), token: LS.get('token'), user: LS.get('user'), boot: LS.get('boot'), emis: LS.get('emis'), view: 'home', arg: null, stack: [] };
 
 /* ---------------- helpers ---------------- */
 const $ = s => document.querySelector(s);
@@ -35,7 +35,7 @@ function classesFor(level) {
 
 /* ---------------- network ---------------- */
 async function api(action, payload) {
-  const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action, payload, token: S.token }) });
+  const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action, payload, token: S.token, operator: S.operator }) });
   const j = await r.json();
   if (j.auth) { signOut(true); throw new Error(j.error); }
   return j;
@@ -52,7 +52,7 @@ async function sync() {
   if (syncing || !ob.length || !navigator.onLine || !S.token) { showSync(); return; }
   syncing = true; showSync();
   try {
-    const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'batch', token: S.token, items: ob.slice(0, 25) }) });
+    const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'batch', token: S.token, operator: S.operator, items: ob.slice(0, 25) }) });
     const j = await r.json();
     if (j.auth) { signOut(true); return; }
     if (!j.ok) throw new Error(j.error);
@@ -134,11 +134,14 @@ V.login = () => `
   <div class="card"><h2>Sign in</h2><div class="ur">لاگ ان: ادارے کا EMIS کوڈ اور PIN</div>
   <label>Login code (EMIS code of the institution, or officer code)</label><input id="lc" inputmode="text" autocomplete="username">
   <label>PIN (6 digits)</label><input id="lp" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password">
+  <label>Your name and designation (person entering the data)</label><input id="lo" value="${esc(S.operator)}" placeholder="e.g. Asif Khan, Computer Instructor">
   <button class="btn full" id="lb">Sign in</button><div id="lm"></div>
   <p class="muted">PINs are issued by the District Education Office (Male) Muzaffarabad. The first sign-in needs internet; after that, data can be entered offline.</p></div>`;
 function bindLogin() {
   $('#lb').onclick = async () => {
     if (!navigator.onLine) { $('#lm').innerHTML = '<div class="msg w">Internet is needed for the first sign-in.</div>'; return; }
+    if ($('#lo').value.trim().length < 3) { $('#lm').innerHTML = '<div class="msg w">Please write your name and designation. Every entry is recorded against it.</div>'; return; }
+    S.operator = $('#lo').value.trim(); LS.set('operator', S.operator);
     $('#lb').disabled = true;
     try {
       const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', payload: { code: $('#lc').value.trim(), pin: $('#lp').value.trim() } }) });
@@ -182,7 +185,12 @@ V.home = () => {
   const officer = role() !== 'SCHOOL';
   const primaryFees = i.level === 'Primary' && role() === 'SCHOOL';
   const isOffice = i.level === 'Office';
+  const ret = (d && d.returned) || [];
+  const tReq = ((d && d.transfersOut) || []).filter(t => t.status === 'Awaiting outgoing institution').length;
   return `${errorsCard()}
+  ${ret.length ? `<div class="card"><h2>Returned for correction (${ret.length})</h2>${ret.map(x => `<div class="msg w"><b>${esc(x.what)}</b><br>${esc(x.remark || 'No reason given')}<div class="muted">${esc(x.by)} · ${esc(x.on)}</div></div>`).join('')}
+  <p class="muted">Correct the entry and save it again; it then goes back for approval.</p></div>` : ''}
+  ${tReq ? `<div class="card"><b>${tReq} transfer request(s) for your staff need your confirmation.</b><br><button class="btn" onclick="go('staff')">Open staff</button></div>` : ''}
   <div class="card"><b>${esc(i.name || S.emis)}</b><div class="muted">${esc(i.level || '')} · EMIS ${esc(S.emis)} ${i.halqa ? '· ' + esc(i.halqa) : ''} ${i.aeo_circle ? '· ' + esc(i.aeo_circle) : ''}</div>
   ${d ? '' : '<div class="msg w">Data for this institution has not been downloaded yet. Connect to the internet once.</div>'}</div>
   <div class="tiles">
@@ -203,9 +211,15 @@ V.posts = () => {
   const filled = {};
   if (d.ddoFilled) Object.assign(filled, d.ddoFilled);
   else d.employees.forEach(e => { if (e.post_id) filled[e.post_id] = (filled[e.post_id] || 0) + 1; });
+  const other = {}, charge = {};
+  d.employees.forEach(e => {
+    if (outOfTitle(e)) other[e.post_id] = (other[e.post_id] || 0) + 1;
+    if (e.charge_type && e.charge_post_id) charge[e.charge_post_id] = (charge[e.charge_post_id] || 0) + 1;
+  });
   const rows = d.posts.slice().sort((a, b) => b.bps - a.bps).map(p => {
     const f = filled[p.post_id] || 0, v = p.sanctioned - f;
-    return `<tr><td>${esc(p.designation)}</td><td>${p.bps}</td><td class="num">${p.sanctioned}</td><td class="num">${f}</td><td class="num">${v > 0 ? `<span class="badge w">${v}</span>` : v < 0 ? `<span class="badge w">+${-v}</span>` : '0'}</td></tr>`;
+    const note = [other[p.post_id] ? `${other[p.post_id]} held by other job title` : '', charge[p.post_id] ? `${charge[p.post_id]} under charge` : ''].filter(Boolean).join(' · ');
+    return `<tr><td>${esc(p.designation)}${note ? `<div class="muted">${note}</div>` : ''}</td><td>${p.bps}</td><td class="num">${p.sanctioned}</td><td class="num">${f}</td><td class="num">${v > 0 ? `<span class="badge w">${v}</span>` : v < 0 ? `<span class="badge w">+${-v}</span>` : '0'}</td></tr>`;
   }).join('');
   return `<div class="card"><h2>Sanctioned and filled posts</h2>
   <p class="muted">Sanctioned posts: budget 2026-27 (DDO ${esc(d.inst.ddo)}). Filled posts are counted from the staff register, so this replaces the monthly vacancy return.
@@ -220,22 +234,33 @@ V.staff = () => {
   const pend = outbox().filter(o => o.payload && (o.payload.employee || o.payload.cnic) && (o.payload.to_emis === S.emis || (o.payload.employee && o.payload.employee.emis === S.emis)));
   const list = d.employees.slice().sort((a, b) => Number(b.post_bps || 0) - Number(a.post_bps || 0)).map(e =>
     `<div class="it" onclick="go('emp',{cnic:'${esc(e.cnic)}'})"><div class="grow"><b>${esc(e.name)}</b>
-    <div class="sub">${esc(e.designation)} · BPS ${esc(e.post_bps)}${e.personal_bps && e.personal_bps !== e.post_bps ? ' (personal ' + esc(e.personal_bps) + ')' : ''} · ${esc(e.service_status)}</div></div>
+    <div class="sub">${outOfTitle(e) ? esc(e.own_designation) + ' <span class="badge w">against ' + esc(e.designation) + ' post</span>' : esc(e.designation)} · BPS ${esc(e.post_bps)}${e.personal_bps && e.personal_bps !== e.post_bps ? ' (personal ' + esc(e.personal_bps) + ')' : ''} · ${esc(e.service_status)}
+    ${e.charge_type ? '<br><span class="badge">' + esc(e.charge_type) + ': ' + esc(e.charge_designation) + '</span>' : ''}</div></div>
     <span class="badge ${e.verified === 'Verified' ? 'o' : 'w'}">${e.verified === 'Verified' ? 'Verified' : 'Unverified'}</span></div>`).join('');
-  const out = (d.transfersOut || []).filter(t => !t.relieved_on).map(t =>
-    `<div class="it"><div class="grow"><b>${esc(t.name)}</b><div class="sub">Joined ${esc(t.to_name)} on ${esc(t.joined_on)} · order ${esc(t.order_no)}</div></div>
-     <button class="btn alt" onclick="relieve('${esc(t.id)}')">Relieved on…</button></div>`).join('');
+  // requests from other institutions for this institution's staff: confirm relieving or reject
+  const out = (d.transfersOut || []).filter(t => t.status === 'Awaiting outgoing institution').map(t =>
+    `<div class="it"><div class="grow"><b>${esc(t.name)}</b> · ${esc(t.designation)}<div class="sub">Requested by ${esc(t.to_name)} · order ${esc(t.order_no)}${t.order_date ? ' dt ' + esc(t.order_date) : ''} · joined there ${esc(t.joined_on)}</div>
+     <button class="btn" onclick="tresp('${esc(t.id)}','confirm')">Confirm relieving</button><button class="btn warn" onclick="tresp('${esc(t.id)}','reject')">Reject</button></div></div>`).join('');
+  // this institution's own requests
+  const inc = (d.transfersIn || []).filter(t => t.status !== 'Completed').slice(-10).reverse().map(t =>
+    `<div class="it"><div class="grow"><b>${esc(t.name)}</b> from ${esc(t.from_name)}<div class="sub">${esc(t.status)}${t.remark ? ' · ' + esc(t.remark) : ''}</div>
+     ${t.id ? `<div class="sub">${t.outgoing_by ? '✓' : '…'} Outgoing institution · ${t.out_approved_by ? '✓' : '…'} Its officer · ${t.approved_by ? '✓' : '…'} Our officer</div>` : ''}</div>
+     <span class="badge ${/Rejected/.test(t.status) ? 'w' : ''}">${/Rejected/.test(t.status) ? 'Rejected' : 'In process'}</span></div>`).join('');
   return `<div class="card"><h2>Staff (${d.employees.length})</h2>
   <button class="btn" onclick="go('emp',{mode:'new'})">+ First-time entry</button>
   <button class="btn alt" onclick="go('receive')">Receive transferred employee</button>
   ${pend.length ? `<div class="msg w">${pend.length} staff entr${pend.length > 1 ? 'ies' : 'y'} waiting to be sent.</div>` : ''}
   <div class="list">${list || '<p class="muted">No employee on the register yet. Use “First-time entry” for each employee who is not yet in the database.</p>'}</div></div>
-  ${out ? `<div class="card"><h2>Transferred out: confirm relieving date</h2><div class="list">${out}</div></div>` : ''}`;
+  ${out ? `<div class="card"><h2>Transfer of your staff: please confirm</h2><p class="muted">Another institution has asked for the record of these employees. Confirm the date of relieving, or reject if the employee has not been relieved or is the wrong person.</p><div class="list">${out}</div></div>` : ''}
+  ${inc ? `<div class="card"><h2>Incoming transfers</h2><p class="muted">The record comes here after the outgoing institution confirms relieving and the AEO / DDEO / DEO office of both institutions approve.</p><div class="list">${inc}</div></div>` : ''}`;
 };
-window.relieve = id => {
-  const dt = prompt('Date of relieving (yyyy-mm-dd):', today());
-  if (!dt) return;
-  queue('confirmRelieving', { id, relieved_on: dt }, 'Relieving date');
+window.tresp = (id, decision) => {
+  const d = D(), t = (d.transfersOut || []).find(x => x.id === id);
+  let p = { id, decision };
+  if (decision === 'confirm') { const dt = prompt('Date of relieving (yyyy-mm-dd):', today()); if (!dt) return; if (!/^\d{4}-\d{2}-\d{2}$/.test(dt)) return toast('Write the date as yyyy-mm-dd'); p.relieved_on = dt; }
+  else { const r = prompt('Reason for rejecting (the requesting institution will see it):'); if (!r) return; p.remark = r; }
+  queue('respondTransfer', p, (decision === 'confirm' ? 'Relieving: ' : 'Reject transfer: ') + (t ? t.name : ''));
+  if (t) t.status = decision === 'confirm' ? 'Awaiting officer approval' : 'Rejected by outgoing institution'; saveD(d); render();
 };
 
 const DOMICILE = ['Muzaffarabad', 'Jhelum Valley (Hattian Bala)', 'Neelum', 'Bagh', 'Haveli', 'Poonch', 'Sudhnoti', 'Mirpur', 'Kotli', 'Bhimber', 'Refugee 1947 / 1989', 'Other'];
@@ -246,6 +271,160 @@ const DUTY = ['On duty', 'Attached out to another institution / office', 'Attach
   'On sanctioned leave', 'On study leave', 'Leave preparatory to retirement (LPR)', 'Under suspension', 'Absent without leave'];
 const MODE = ['Initial recruitment (PSC)', 'Initial recruitment (testing agency)', 'Initial recruitment (departmental committee)', 'Promotion from BPS-1 (quota)', "Deceased employee's family quota", 'Other'];
 const BPS = Array.from({ length: 22 }, (_, k) => String(k + 1));
+const PLACEMENTS = ['Against own post', 'Posted against another post', 'Appointed against another post'];
+const CHARGES = ['Additional charge', 'Current charge'];
+const normT = t => String(t || '').toLowerCase().replace(/[^a-z]/g, '');
+const outOfTitle = e => !!e.own_designation && !!e.designation && normT(e.own_designation) !== normT(e.designation);
+/** all departmental job titles in AJK (budget books 2026-27, Male and Female); server sends the same list */
+const ALL_TITLES = [
+  ["Chief Computer Instructror", 20],
+  ["Director General CRD", 20],
+  ["Director Public Instructions", 20],
+  ["Secretary", 20],
+  ["Senior Additional Secretary", 20],
+  ["Senior Principal", 20],
+  ["Additional Secretary", 19],
+  ["Director", 19],
+  ["Divisional Director", 19],
+  ["Head Computer Instructor", 19],
+  ["Principal", 19],
+  ["Deputy Director", 18],
+  ["Deputy Secretary", 18],
+  ["District Education Officer", 18],
+  ["Principal", 18],
+  ["Project Coordinator", 18],
+  ["Senior Computer Instructor", 18],
+  ["Senior Headmaster", 18],
+  ["Senior Headmistress", 18],
+  ["Senior Legal Officer", 18],
+  ["Senior Sub.Specialist Quality Assurance", 18],
+  ["Senior Subject Specialist", 18],
+  ["System Analyst", 18],
+  ["Assistant Director", 17],
+  ["Computer Instructor", 17],
+  ["Computer Programmer", 17],
+  ["Database Administrator", 17],
+  ["Deputy District Education Officer", 17],
+  ["Headmaster", 17],
+  ["Headmistress", 17],
+  ["Lecturer", 17],
+  ["Legal Officer", 17],
+  ["Network Administrator", 17],
+  ["Private Secretary", 17],
+  ["Program Officer", 17],
+  ["Section Officer", 17],
+  ["Subject Specialist", 17],
+  ["Subject Specialist Physical Education", 17],
+  ["Superintendent", 17],
+  ["System Engineer", 17],
+  ["Admin. Officer", 16],
+  ["Assistant", 16],
+  ["Assistant Education Officer", 16],
+  ["Assistant Parokar", 16],
+  ["Budget Officer", 16],
+  ["Computer Operator", 16],
+  ["Computer Teacher", 16],
+  ["DPE", 16],
+  ["Hardware Technician", 16],
+  ["Head Clerk", 16],
+  ["Librarian", 16],
+  ["Personal Assistant", 16],
+  ["Registrar", 16],
+  ["Senior Scale Stenographer", 16],
+  ["Senior Science Teacher", 16],
+  ["Senior Teacher", 16],
+  ["Senior Teacher Technical", 16],
+  ["Elementary Teacher", 14],
+  ["Elementary Teacher (Arabic)", 14],
+  ["Elementary Teacher (Drawing)", 14],
+  ["Elementary Teacher (Drawing/Handicraft)", 14],
+  ["Elementary Teacher (Girls Guide)", 14],
+  ["Elementary Teacher (Handicraft)", 14],
+  ["Elementary Teacher (PET)", 14],
+  ["Elementary Teacher (Qari)", 14],
+  ["Elementary Teacher (Qaria)", 14],
+  ["Elementary Teacher (Science)", 14],
+  ["Elementary Teacher (Technical)", 14],
+  ["Junior Computer Teacher", 14],
+  ["Section Clerk", 14],
+  ["Senior Clerk", 14],
+  ["Stenographer", 14],
+  ["Data Entry Operator", 12],
+  ["Girls Guide Trainer", 12],
+  ["Junior Clerk", 11],
+  ["Computer Assistant", 7],
+  ["Laboratory Assistant", 7],
+  ["Shop Assistant", 6],
+  ["Driver", 5],
+  ["Library Assistant", 5],
+  ["Machine Operator", 5],
+  ["Band Master", 4],
+  ["Driver", 4],
+  ["Qasid", 2],
+  ["Chowkidar", 1],
+  ["Cleaner", 1],
+  ["Cook", 1],
+  ["Cook/Waiter", 1],
+  ["Kalra", 1],
+  ["Laboratory Attendant", 1],
+  ["Laboratory Attendant (Contract)", 1],
+  ["Mali", 1],
+  ["Mualim-ul-Quran", 1],
+  ["Naib Qasid", 1],
+  ["Naib Qasid/Kalra", 1],
+  ["Shop Attendant", 1],
+  ["Sweeper", 1],
+  ["Water Carrier", 1],
+  ["Water Carrier/Sweeper", 1]
+];
+/** own-title options as "Title|BPS"; only titles from the list can be chosen */
+function titleOpts(sel, selBps) {
+  const list = (S.boot && S.boot.meta && S.boot.meta.designations && S.boot.meta.designations.length > 60) ? S.boot.meta.designations : ALL_TITLES;
+  const v = sel ? sel + '|' + (selBps || '') : '';
+  // grouped by BPS so the long list is easy to scan on a phone
+  const groups = {};
+  list.forEach(([t, b]) => (groups[b] = groups[b] || []).push([t + '|' + b, `${t} (BPS-${b})`]));
+  return '<option value="">— choose —</option>' + Object.keys(groups).sort((a, b) => b - a)
+    .map(b => `<optgroup label="BPS-${b}">${opts(groups[b], v)}</optgroup>`).join('');
+}
+function placementBlock(e, posts) {
+  return `<h3>Own job title and post occupied</h3>
+  <label>Own job title (substantive designation of the employee) *</label><select name="own_title">${titleOpts(e.own_designation, e.own_bps)}</select>
+  <div id="plw" ${outOfTitle(e) ? '' : 'hidden'}><div class="msg w">The post occupied has a different job title. Say how the employee came to hold it.</div>
+  <label>How placed against this post</label><select name="placement">${opts(PLACEMENTS.slice(1), e.placement)}</select>
+  <label>Order No. and date of this posting / appointment</label><input name="placement_order" value="${esc(e.placement_order)}"></div>
+  <h3>Charge of another post (if any)</h3>
+  <label>Holds additional / current charge of another post?</label><select name="charge_type">${opts(CHARGES, e.charge_type, 'No')}</select>
+  <div id="chw" ${e.charge_type ? '' : 'hidden'}>
+  <label>Post held under charge</label><select name="charge_post_id">${opts(posts, e.charge_post_id, '— choose —')}</select>
+  <div class="row"><div><label>Charge order No. and date</label><input name="charge_order" value="${esc(e.charge_order)}"></div>
+  <div><label>Charge held since</label><input type="date" name="charge_from" value="${esc(e.charge_from)}"></div></div></div>`;
+}
+/** show/hide placement and charge fields as the form changes */
+function bindPlacement(root) {
+  const q = n => root.querySelector(`[name="${n}"]`), d = D();
+  const upd = () => {
+    const post = d.posts.find(x => x.post_id === (q('post_id') || {}).value);
+    const own = (q('own_title').value || '').split('|')[0];
+    root.querySelector('#plw').hidden = !(post && own && normT(own) !== normT(post.designation));
+    root.querySelector('#chw').hidden = !q('charge_type').value;
+  };
+  // a new entry: default own title to the post chosen
+  if (q('post_id')) q('post_id').addEventListener('change', () => {
+    const post = d.posts.find(x => x.post_id === q('post_id').value);
+    if (post && !q('own_title').value) { const v = post.designation + '|' + post.bps; if ([...q('own_title').options].some(o => o.value === v)) q('own_title').value = v; }
+    upd();
+  });
+  ['own_title', 'charge_type'].forEach(n => q(n).addEventListener('change', upd));
+  upd();
+}
+function readPlacement(f, post) {
+  const [own, ownBps] = (f.own_title || '').split('|'); delete f.own_title;
+  f.own_designation = own; f.own_bps = ownBps;
+  if (normT(f.own_designation) === normT(post.designation)) { f.placement = PLACEMENTS[0]; f.placement_order = ''; }
+  if (!f.charge_type) { f.charge_post_id = ''; f.charge_order = ''; f.charge_from = ''; }
+  return f;
+}
 
 V.emp = arg => {
   const d = D(); if (!d) return noData();
@@ -259,7 +438,8 @@ V.emp = arg => {
   <div class="row"><div><label>Personnel No.</label><input name="personnel_no" value="${esc(e.personnel_no)}"></div>
   <div><label>Mobile *</label><input name="mobile" value="${esc(e.mobile)}" inputmode="tel" placeholder="03XX-XXXXXXX"></div></div>
   <label>Full name (as in service record) *</label><input name="name" value="${esc(e.name)}">
-  <label>Father's name *</label><input name="father_name" value="${esc(e.father_name)}">
+  <label>Father's / husband's name *</label><input name="father_name" value="${esc(e.father_name)}">
+  <label>Gender *</label><select name="gender">${opts(['Male', 'Female'], e.gender || 'Male')}</select>
   <div class="row"><div><label>Date of birth (as on SSC certificate) *</label><input type="date" name="dob" value="${esc(e.dob)}"></div>
   <div><label>WhatsApp, if different</label><input name="whatsapp" value="${esc(e.whatsapp)}" inputmode="tel"></div></div>
   <div class="row"><div><label>Domicile</label><select name="domicile">${opts(DOMICILE, e.domicile, '—')}</select></div>
@@ -272,13 +452,14 @@ V.emp = arg => {
   <label>Designation at first appointment *</label><input name="first_designation" value="${esc(e.first_designation)}" placeholder="e.g. Primary Teacher">
   <label>Mode of first appointment</label><select name="appt_mode">${opts(MODE, e.appt_mode, '—')}</select>
   <h3>Present post</h3>
-  <label>Post held (from sanctioned posts) *</label><select name="post_id">${opts(posts, e.post_id, '— choose —')}</select>
+  <label>Post occupied (sanctioned post against which salary is drawn) *</label><select name="post_id">${opts(posts, e.post_id, '— choose —')}</select>
   <div class="row"><div><label>Personal BPS, if different (upgradation / move-over)</label><select name="personal_bps">${opts(BPS, e.personal_bps, 'Same as post')}</select></div>
   <div><label>Current basic pay (Rs) *</label><input name="basic_pay" value="${esc(e.basic_pay)}" inputmode="numeric"></div></div>
   <div class="row"><div><label>Employment status</label><select name="service_status">${opts(STATUS, e.service_status)}</select></div>
   <div><label>Joined this institution on *</label><input type="date" name="joined_on" value="${esc(e.joined_on)}"></div></div>
   <label>Present duty status</label><select name="duty_status">${opts(DUTY, e.duty_status)}</select>
   <label>Actually working at (only if attached elsewhere)</label><input name="working_at" value="${esc(e.working_at)}">
+  ${placementBlock(e, posts)}
   <div id="histbox">${isNew ? histEditor([], []) : `<p class="muted">${navigator.onLine ? 'Loading service history…' : 'Service history can be viewed and edited when online.'}</p>`}</div>
   <button class="btn full" id="es">${isNew ? 'Save employee' : 'Save changes'}</button>
   ${isNew ? '' : `<button class="btn warn" onclick="go('depart',{cnic:'${esc(e.cnic)}',name:'${esc(e.name)}'})">Record retirement / death / leaving district</button>`}
@@ -310,6 +491,7 @@ function readHist(kind) {
 BIND.emp = async arg => {
   const isNew = arg.mode === 'new';
   let histLoaded = isNew;
+  bindPlacement($('#ef'));
   if (!isNew && navigator.onLine) {
     try {
       const j = await api('searchEmployee', { q: arg.cnic });
@@ -328,8 +510,21 @@ BIND.emp = async arg => {
     for (const k of ['name', 'father_name', 'dob', 'first_appt_date', 'first_bps', 'first_designation', 'post_id', 'basic_pay', 'joined_on', 'mobile'])
       if (!f[k]) return toast('Please fill: ' + ($(`[name="${k}"]`).previousElementSibling || {}).textContent);
     if (isNew && d.employees.some(x => x.cnic === f.cnic)) return toast('This CNIC is already on your register');
+    const mob = v => !v || /^03\d{2}-?\d{7}$/.test(v.replace(/\s/g, ''));
+    if (!mob(f.mobile) || !mob(f.whatsapp)) return toast('Mobile number must be like 03XX-XXXXXXX');
+    const yrs = (a, b) => (new Date(b) - new Date(a)) / 31557600000;
+    if (yrs(f.dob, today()) < 17 || yrs(f.dob, today()) > 66) return toast('Please check the date of birth');
+    if (yrs(f.dob, f.first_appt_date) < 16) return toast('First appointment date is too close to the date of birth');
+    if (f.joined_on < f.first_appt_date) return toast('Joining this institution cannot be before the first appointment');
+    if (f.joined_on > today() || f.first_appt_date > today()) return toast('Dates cannot be in the future');
+    if (!/^\d+$/.test(f.basic_pay) || Number(f.basic_pay) < 10000) return toast('Basic pay should be the monthly amount in rupees');
     const p = d.posts.find(x => x.post_id === f.post_id);
     Object.assign(f, { emis: S.emis, designation: p.designation, post_bps: String(p.bps) });
+    if (!f.own_title) return toast('Choose the employee\'s own job title from the list');
+    readPlacement(f, p);
+    if (f.charge_type && !f.charge_post_id) return toast('Choose the post held under charge');
+    if (f.charge_type && f.charge_post_id === f.post_id) return toast('Charge post cannot be the post occupied');
+    if (f.charge_post_id) f.charge_designation = (d.posts.find(x => x.post_id === f.charge_post_id) || {}).designation || '';
     if (!f.personal_bps) f.personal_bps = '';
     const payload = { mode: isNew ? 'new' : 'update', employee: f };
     if (histLoaded) {
@@ -375,21 +570,29 @@ BIND.receive = () => {
       if (!j.found.length) { $('#rr').innerHTML = `<div class="msg w">No record found. If the employee comes from outside the district or has never been entered, make a first-time entry.</div><button class="btn" onclick="S.stack.pop();go('emp',{mode:'new'})">First-time entry</button>`; return; }
       const f = j.found[0], e = f.employee, d = D();
       const posts = d.posts.slice().sort((a, b) => b.bps - a.bps).map(p => [p.post_id, `${p.designation} (BPS-${p.bps})`]);
-      $('#rr').innerHTML = `<div class="hist"><b>${esc(e.name)}</b> s/o ${esc(e.father_name)}<div class="sub">${esc(e.designation)} · BPS ${esc(e.post_bps)} · now at ${esc(f.station_name)}</div>
+      $('#rr').innerHTML = `<div class="hist"><b>${esc(e.name)}</b> s/o ${esc(e.father_name)}<div class="sub">${esc(e.own_designation || e.designation)} (own title) · BPS ${esc(e.own_bps || e.post_bps)} · now at ${esc(f.station_name)}</div>
         <div class="sub">Born ${esc(e.dob)} · first appointed ${esc(e.first_appt_date)} as ${esc(e.first_designation)}</div>
         <div class="sub">Promotions: ${f.promotions.map(p => esc(p.to_designation) + ' (' + esc(p.date) + ')').join('; ') || 'none'}</div>
         <div class="sub">Postings: ${f.postings.map(p => esc(p.station_name) + ' ' + esc(p.from_date) + '–' + esc(p.to_date || 'now')).join('; ')}</div></div>
         ${e.emis === S.emis ? '<div class="msg o">Already at this institution.</div>' : `<div id="cf">
-        <label>Post at this institution *</label><select name="post_id">${opts(posts, '', '— choose —')}</select>
+        <label>Post occupied at this institution *</label><select name="post_id">${opts(posts, '', '— choose —')}</select>
+        <div id="cpl" hidden><div class="msg w">This post has a different job title from the employee's own (${esc(e.own_designation || e.designation)}).</div>
+        <label>How placed against this post</label><select name="placement">${opts(PLACEMENTS.slice(1))}</select></div>
         <div class="row"><div><label>Transfer order No. *</label><input name="order_no"></div><div><label>Order date</label><input type="date" name="order_date"></div></div>
         <label>Joined here on *</label><input type="date" name="joined_on" value="${today()}">
-        <button class="btn full" id="cs">Bring record to this institution</button></div>`}`;
+        <button class="btn full" id="cs">Send transfer request</button>
+        <p class="muted">The outgoing institution must confirm relieving, and the AEO / DDEO / DEO office of both institutions must approve; the record then moves here.</p></div>`}`;
+      if ($('#cf')) $('#cf').querySelector('[name="post_id"]').onchange = ev => {
+        const p = d.posts.find(x => x.post_id === ev.target.value);
+        $('#cpl').hidden = !(p && normT(p.designation) !== normT(e.own_designation || e.designation));
+      };
       if ($('#cs')) $('#cs').onclick = () => {
         const c = formData($('#cf'));
         if (!c.post_id || !c.order_no || !c.joined_on) return toast('Post, order No. and joining date are required');
         const p = d.posts.find(x => x.post_id === c.post_id);
-        queue('claimEmployee', Object.assign(c, { cnic: e.cnic, to_emis: S.emis, designation: p.designation }), 'Transfer in: ' + e.name);
-        d.employees.push(Object.assign({}, e, { emis: S.emis, post_id: c.post_id, designation: p.designation, post_bps: String(p.bps), joined_on: c.joined_on }));
+        queue('claimEmployee', Object.assign(c, { cnic: e.cnic, to_emis: S.emis, designation: p.designation }), 'Transfer request: ' + e.name);
+        d.transfersIn = (d.transfersIn || []).concat([{ name: e.name, from_name: f.station_name, status: 'Request sent to outgoing institution and officer' }]);
+        toast('Request sent. The record moves here after the outgoing institution and both officers approve.');
         saveD(d); back();
       };
     } catch (err) { $('#rr').innerHTML = `<div class="msg w">${esc(err.message)}</div>`; }
@@ -578,11 +781,12 @@ BIND.approvals = async () => {
   const items = j.items || [];
   S.boot.pending = items.length; LS.set('boot', S.boot);
   $('#al').innerHTML = items.length ? items.map((x, k) => `<div class="it"><div class="grow"><b>${esc(x.inst)}</b><div class="sub">${esc(x.what)} · ${esc(x.submitted_on)}</div>
-    <button class="btn" onclick="rev(${k},'approve')">Approve</button><button class="btn warn" onclick="rev(${k},'return')">Return</button>
+    ${(x.actions || ['approve', 'return']).map(a => a === 'approve' ? `<button class="btn" onclick="rev(${k},'approve')">Approve</button>`
+      : `<button class="btn warn" onclick="rev(${k},'return')">${x.sheet === 'Transfers' ? 'Reject' : 'Return'}</button>`).join('')}
     <button class="btn alt" onclick="pick('${esc(x.emis)}')">Open school</button></div></div>`).join('') : '<p class="muted">Nothing is waiting.</p>';
   window.rev = (k, decision) => {
     const x = items[k]; let remark = '';
-    if (decision === 'return') { remark = prompt('Reason for returning (the school will see it):') || ''; if (!remark) return; }
+    if (decision === 'return') { remark = prompt('Reason (the school will see it):') || ''; if (!remark) return; }
     queue('review', { sheet: x.sheet, key: x.key, decision, remark }, `${decision === 'return' ? 'Return' : 'Approve'}: ${x.inst}`);
     items.splice(k, 1); S.boot.pending = items.length; LS.set('boot', S.boot); BIND.approvals();
   };
@@ -598,6 +802,7 @@ V.settings = () => {
   <label>New 6-digit PIN</label><input id="p1" type="password" inputmode="numeric" maxlength="6"><button class="btn" id="pc">Change PIN</button>
   <p class="muted">Keep the PIN with the head. On handing over charge, the new head should change it.</p></div>
   <div class="card"><h2>This phone</h2><p class="muted">Signed in as ${esc(S.user.code)} (${esc(S.user.role)}). Waiting to send: ${outbox().length}.</p>
+  <label>Person entering data on this phone</label><input id="op" value="${esc(S.operator)}"><button class="btn alt" onclick="if($('#op').value.trim().length>2){S.operator=$('#op').value.trim();LS.set('operator',S.operator);toast('Saved')}">Save name</button>
   <button class="btn alt" onclick="sync();refreshInst();refreshBoot();toast('Refreshing')">Refresh now</button>
   <button class="btn warn" onclick="signOut()">Sign out</button></div>`;
 };
