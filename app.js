@@ -119,7 +119,8 @@ const V = {};
 
 function render() {
   const app = $('#app');
-  if (!S.token) { $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
+  if (!S.token) { document.body.classList.remove('wide'); $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
+  document.body.classList.toggle('wide', S.view === 'home');
   $('#back').hidden = S.view === 'home' && !(role() !== 'SCHOOL' && S.emis);
   const i = inst();
   $('#title').textContent = S.emis ? (i.name || S.emis) : S.user.name;
@@ -129,6 +130,7 @@ function render() {
   showSync();
 }
 const BIND = {};
+BIND.home = () => { if ($('#dash')) DASH.load($('#dash'), role() !== 'SCHOOL' ? S.emis : ''); };
 
 V.login = () => `
   <div class="card"><h2>Sign in</h2><div class="ur">لاگ ان: ادارے کا EMIS کوڈ اور PIN</div>
@@ -136,7 +138,8 @@ V.login = () => `
   <label>PIN (6 digits)</label><input id="lp" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password">
   <label>Your name and designation (person entering the data)</label><input id="lo" value="${esc(S.operator)}" placeholder="e.g. Asif Khan, Computer Instructor">
   <button class="btn full" id="lb">Sign in</button><div id="lm"></div>
-  <p class="muted">PINs are issued by the District Education Office (Male) Muzaffarabad. The first sign-in needs internet; after that, data can be entered offline.</p></div>`;
+  <p class="muted">PINs are issued by the District Education Office (Male) Muzaffarabad. The first sign-in needs internet; after that, data can be entered offline.</p></div>
+  ${DASH.credit().replace(`<br><a href="#" onclick="go('about');return false">About this app</a>`, '')}`;
 function bindLogin() {
   $('#lb').onclick = async () => {
     if (!navigator.onLine) { $('#lm').innerHTML = '<div class="msg w">Internet is needed for the first sign-in.</div>'; return; }
@@ -159,10 +162,11 @@ V.picker = () => {
   const list = (S.boot && S.boot.institutions) || [];
   const p = S.boot && S.boot.pending;
   return `${errorsCard()}
-  ${p ? `<div class="card"><b>${p} item(s) waiting for your approval</b><br><button class="btn" onclick="go('approvals')">Open approvals</button></div>` : ''}
-  <div class="card"><h2>${esc(S.user.name)}</h2><input id="pf" placeholder="Search by name or EMIS code">
+  <div id="dash"></div>
+  <div class="card db-picker"><h2>Open an institution</h2><input id="pf" placeholder="Search by name or EMIS code">
   <div class="list" id="pl">${pickerRows(list, '')}</div></div>
-  <button class="btn alt" onclick="go('settings')">Settings / sign out</button>`;
+  <button class="btn alt" onclick="go('settings')">Settings / sign out</button>
+  ${DASH.credit()}`;
 };
 function pickerRows(list, q) {
   q = q.toLowerCase();
@@ -170,7 +174,7 @@ function pickerRows(list, q) {
     `<div class="it" onclick="pick('${esc(i.emis)}')"><div class="grow"><b>${esc(i.name)}</b><div class="sub">${esc(i.level)} · ${esc(i.emis)} ${i.aeo_circle ? '· ' + esc(i.aeo_circle) : i.halqa ? '· ' + esc(i.halqa) : ''}</div></div>›</div>`).join('')
     || '<p class="muted">No match.</p>';
 }
-function bindPicker() { $('#pf').oninput = e => { $('#pl').innerHTML = pickerRows(S.boot.institutions, e.target.value); }; }
+function bindPicker() { DASH.load($('#dash')); $('#pf').oninput = e => { $('#pl').innerHTML = pickerRows(S.boot.institutions, e.target.value); }; }
 window.pick = emis => { S.emis = emis; LS.set('emis', emis); S.stack = []; S.view = 'home'; render(); refreshInst(); };
 
 function errorsCard() {
@@ -191,8 +195,9 @@ V.home = () => {
   ${ret.length ? `<div class="card"><h2>Returned for correction (${ret.length})</h2>${ret.map(x => `<div class="msg w"><b>${esc(x.what)}</b><br>${esc(x.remark || 'No reason given')}<div class="muted">${esc(x.by)} · ${esc(x.on)}</div></div>`).join('')}
   <p class="muted">Correct the entry and save it again; it then goes back for approval.</p></div>` : ''}
   ${tReq ? `<div class="card"><b>${tReq} transfer request(s) for your staff need your confirmation.</b><br><button class="btn" onclick="go('staff')">Open staff</button></div>` : ''}
-  <div class="card"><b>${esc(i.name || S.emis)}</b><div class="muted">${esc(i.level || '')} · EMIS ${esc(S.emis)} ${i.halqa ? '· ' + esc(i.halqa) : ''} ${i.aeo_circle ? '· ' + esc(i.aeo_circle) : ''}</div>
-  ${d ? '' : '<div class="msg w">Data for this institution has not been downloaded yet. Connect to the internet once.</div>'}</div>
+  ${d ? '' : '<div class="msg w">Data for this institution has not been downloaded yet. Connect to the internet once.</div>'}
+  <div id="dash"></div>
+  <h2 class="db-entry">Enter and update data <span>EMIS ${esc(S.emis)}${i.halqa ? ', ' + esc(i.halqa) : ''}${i.aeo_circle ? ', ' + esc(i.aeo_circle) : ''}</span></h2>
   <div class="tiles">
     <button class="tile" onclick="go('staff')"><b>Staff</b><small>Employees, service record, transfers</small><div class="ur">عملہ</div></button>
     <button class="tile" onclick="go('posts')"><b>Posts</b><small>Sanctioned vs filled</small><div class="ur">آسامیاں</div></button>
@@ -202,7 +207,9 @@ V.home = () => {
     ${officer ? `<button class="tile" onclick="go('approvals')"><b>Approvals</b><small>${(S.boot && S.boot.pending) || 0} waiting</small><div class="ur">منظوری</div></button>` : ''}
     <button class="tile" onclick="go('settings')"><b>Settings</b><small>Head's details, PIN, sign out</small></button>
   </div>
-  ${officer ? `<button class="btn alt full" onclick="S.emis=null;LS.del('emis');S.stack=[];render()">‹ Choose another institution</button>` : ''}`;
+  <div id="dash2"></div>
+  ${officer ? `<button class="btn alt full" onclick="S.emis=null;LS.del('emis');S.stack=[];render()">‹ Choose another institution</button>` : ''}
+  ${DASH.credit()}`;
 };
 
 /* ---------- posts ---------- */
@@ -792,6 +799,20 @@ BIND.approvals = async () => {
   };
 };
 
+/* ---------- about ---------- */
+V.about = () => `<div class="card about">
+  <h2>District School Data System</h2>
+  <p>District Education Office (Male) Muzaffarabad, Elementary &amp; Secondary Education Department, Azad Jammu &amp; Kashmir.</p>
+  <h3>Purpose</h3>
+  <p>One place where schools, Assistant Education Officers, the Deputy District Education Officer and the District Education Office keep staff, posts, enrolment, fees and examination results up to date. Each fact is entered once, by the institution closest to it; vacancy positions, staff statements and performance reports are produced from it, so the same data is not asked for again.</p>
+  <h3>Developer</h3>
+  <p>Conceived and developed by <b>Dr. Muhammad Naeem Khwaja</b>, District Education Officer (Male), Muzaffarabad, as a personal initiative for the district. Trial launched in November 2026.</p>
+  <h3>Ownership of data</h3>
+  <p>The system and all data entered in it belong to the District Education Office (Male) Muzaffarabad. Data is visible only to the institution that entered it and the officers who supervise it.</p>
+  <h3>Help</h3>
+  <p>For PINs, corrections or problems, contact the District Education Office (Male), L Block, District Complex Muzaffarabad, phone 05822-960010.</p>
+  <p class="muted">Version: November 2026</p></div>`;
+
 /* ---------- settings ---------- */
 V.settings = () => {
   const i = inst(), isInst = i.level && i.level !== 'Office';
@@ -804,7 +825,8 @@ V.settings = () => {
   <div class="card"><h2>This phone</h2><p class="muted">Signed in as ${esc(S.user.code)} (${esc(S.user.role)}). Waiting to send: ${outbox().length}.</p>
   <label>Person entering data on this phone</label><input id="op" value="${esc(S.operator)}"><button class="btn alt" onclick="if($('#op').value.trim().length>2){S.operator=$('#op').value.trim();LS.set('operator',S.operator);toast('Saved')}">Save name</button>
   <button class="btn alt" onclick="sync();refreshInst();refreshBoot();toast('Refreshing')">Refresh now</button>
-  <button class="btn warn" onclick="signOut()">Sign out</button></div>`;
+  <button class="btn warn" onclick="signOut()">Sign out</button>
+  <button class="btn alt" onclick="go('about')">About this app</button></div>`;
 };
 BIND.settings = () => {
   if ($('#hs')) $('#hs').onclick = () => {
