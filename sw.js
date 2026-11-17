@@ -1,5 +1,5 @@
 /* Offline shell: the app opens without internet; data calls go to the network (Apps Script). */
-const CACHE = 'sds-v8';
+const CACHE = 'sds-v9';
 const SHELL = ['./', 'index.html', 'app.js', 'dash.js', 'scheme.js', 'fonts/plex-400.woff2', 'fonts/plex-500.woff2', 'fonts/plex-600.woff2', 'config.js', 'manifest.json', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

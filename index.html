@@ -19,7 +19,47 @@
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 header{position:sticky;top:0;z-index:5;background:var(--pine);color:#fff;border-bottom:3px solid var(--accent);padding:10px 16px calc(10px);display:flex;align-items:center;gap:10px}
 header h1{font-weight:500;font-size:16px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-header button{background:transparent;border:0;color:inherit;font-size:22px;padding:2px 6px}
+header button{background:transparent;border:0;color:inherit;font-size:22px;padding:2px 6px;cursor:pointer;line-height:1}
+header h1{cursor:pointer}
+/* ---------- side menu ---------- */
+#side{position:fixed;top:0;left:0;bottom:0;width:272px;background:var(--pine);color:#dbe9e1;z-index:20;transform:translateX(-100%);transition:transform .22s ease;display:flex;flex-direction:column;overflow-y:auto}
+#side.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.35)}
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:19}
+.side-brand{padding:18px 20px 12px;border-bottom:1px solid rgba(255,255,255,.12)}
+.side-brand b{display:block;color:#fff;font-size:16px;font-weight:600}.side-brand span{font-size:12.5px;color:#9fbfb0}
+#nav{list-style:none;margin:0;padding:8px 10px}
+#nav li{margin:2px 0}
+#nav .sec{font-size:11.5px;color:#7fa493;padding:12px 10px 4px;letter-spacing:.02em}
+#nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;color:#dbe9e1;text-decoration:none;font-size:14.5px;cursor:pointer}
+#nav a:hover{background:rgba(255,255,255,.08);color:#fff}
+#nav a.on{background:rgba(255,255,255,.12);color:#fff;box-shadow:inset 3px 0 0 var(--accent)}
+#nav a .ct{margin-left:auto;font-size:12px;background:var(--accent);color:#1a1200;border-radius:999px;padding:1px 8px;font-weight:600}
+#nav a svg{width:18px;height:18px;flex:none;opacity:.85}
+.side-foot{margin-top:auto;padding:12px 20px 18px;font-size:12px;color:#7fa493;border-top:1px solid rgba(255,255,255,.12)}
+@media (min-width:1000px){
+  body.nav{padding-left:272px}
+  body.nav #side{transform:none;box-shadow:none}
+  body.nav #menu{display:none}
+  body.nav #scrim{display:none!important}
+  body.nav header{left:272px}
+}
+/* tappable cues */
+.it[onclick],.tap{cursor:pointer}
+.list .it[onclick]:hover,.list .it.tap:hover{background:var(--bg);margin:0 -14px;padding-left:14px;padding-right:14px;border-radius:8px}
+.chev{color:var(--mute);font-size:20px;line-height:1;padding-left:6px}
+.pill{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;background:var(--brand2);color:var(--ink);margin-left:6px}
+.grp{margin:14px 0 6px;display:flex;justify-content:space-between;align-items:baseline;cursor:pointer}
+.grp h3{margin:0;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.03em}.grp span{font-size:12.5px;color:var(--mute);display:inline-flex;align-items:center;gap:4px}.grp .chev{font-style:normal;display:inline-block;transition:transform .15s}.grp.open .chev{transform:rotate(90deg)}
+.seg{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+.seg button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer}
+.seg button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+@media (prefers-color-scheme:dark){.seg button.on{color:#0b1a10}}
+.rtable{font-size:13px;white-space:nowrap}.rtable th{position:sticky;top:0;background:var(--card)}
+.rwrap{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:10px}
+.kv2{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;font-size:14px}.kv2 b{color:var(--mute);font-weight:500}
+.decide{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 0 4px;margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+.decide .btn{margin:0}
+@media print{header,#side,#scrim,#toast,.noprint{display:none!important}body{background:#fff}main{max-width:none;padding:0}.rwrap{max-height:none;border:0;overflow:visible}.card{border:0}}
 #sync{font-size:12px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.18);white-space:nowrap}
 main{max-width:760px;margin:0 auto;padding:14px 16px 90px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:0 0 12px}
@@ -68,6 +108,7 @@ body.wide main{max-width:1200px}
 .db-sec{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px;min-width:0}
 .db-sh{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px}
 .db-sh h3{font-size:16px;font-weight:600;margin:0}
+.rhead{flex-wrap:wrap;align-items:center}.rhead h3{text-transform:none;letter-spacing:0;font-size:17px;color:var(--ink);margin:0}.rbtn{display:flex;gap:6px;flex-wrap:wrap}.rbtn .btn{margin:0;padding:8px 12px;font-size:13.5px}
 .db-side{font-size:13px;color:var(--mute);text-align:right}
 .db-sec h4{font-size:13px;font-weight:500;color:var(--mute);margin:16px 0 8px}
 .db-p{font-size:14px;color:var(--mute);margin:0 0 6px}
@@ -179,7 +220,10 @@ body.wide main{max-width:1200px}
 </style>
 </head>
 <body>
-<header><button id="back" aria-label="Back" hidden>‹</button><h1 id="title">School Data</h1><span id="sync"></span></header>
+<header><button id="menu" aria-label="Menu" hidden>☰</button><button id="back" aria-label="Back" hidden>‹</button><h1 id="title" title="Go to your home">School Data</h1><span id="sync"></span></header>
+<nav id="side" aria-label="Main menu" hidden><div class="side-brand"><b>School Data</b><span>DEO (Male) Muzaffarabad</span></div><ul id="nav"></ul>
+<div class="side-foot" id="sidefoot"></div></nav>
+<div id="scrim" hidden></div>
 <main id="app"></main>
 <div id="toast"></div>
 <script src="config.js"></script>

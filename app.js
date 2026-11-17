@@ -74,6 +74,7 @@ function showSync() {
   const n = outbox().length, el = $('#sync');
   el.textContent = !S.token ? '' : n ? (navigator.onLine ? (syncing ? 'Sending ' + n + '…' : n + ' to send') : n + ' waiting · offline') : navigator.onLine ? '✓ Up to date' : 'Offline';
 }
+window.addEventListener('online', () => SCOPE.refresh(false));
 window.addEventListener('online', () => { showSync(); sync(); });
 window.addEventListener('offline', showSync);
 setInterval(sync, 60000);
@@ -119,11 +120,15 @@ const V = {};
 
 function render() {
   const app = $('#app');
-  if (!S.token) { document.body.classList.remove('wide'); $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
-  document.body.classList.toggle('wide', S.view === 'home');
-  $('#back').hidden = S.view === 'home' && !(role() !== 'SCHOOL' && S.emis);
+  NAV.close();
+  if (!S.token) { document.body.classList.remove('wide', 'nav'); $('#side').hidden = true; $('#menu').hidden = true; $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
+  document.body.classList.add('nav'); $('#side').hidden = false; $('#menu').hidden = false;
+  document.body.classList.toggle('wide', ['home', 'reports', 'institutions', 'search', 'review', 'approvals'].includes(S.view));
+  $('#back').hidden = !S.stack.length;
   const i = inst();
-  $('#title').textContent = S.emis ? (i.name || S.emis) : S.user.name;
+  const TOP = { institutions: 'Institutions', search: 'Staff search', approvals: 'Approvals', review: 'Review', reports: 'Reports', settings: 'Settings', about: 'About' };
+  $('#title').textContent = TOP[S.view] && role() !== 'SCHOOL' ? TOP[S.view] : S.emis ? (i.name || S.emis) : S.user.name;
+  NAV.render();
   if (S.view === 'home' && role() !== 'SCHOOL' && !S.emis) { app.innerHTML = V.picker(); bindPicker(); showSync(); return; }
   app.innerHTML = (V[S.view] || V.home)(S.arg);
   (BIND[S.view] || (() => { }))(S.arg);
@@ -152,7 +157,7 @@ function bindLogin() {
       if (!j.ok) throw new Error(j.error);
       S.token = j.token; S.user = j.user; LS.set('token', j.token); LS.set('user', j.user);
       if (j.user.role === 'SCHOOL') { S.emis = j.user.code; LS.set('emis', S.emis); }
-      await refreshBoot(); await refreshInst(); sync(); render();
+      await refreshBoot(); await refreshInst(); sync(); render(); setTimeout(() => SCOPE.refresh(true), 1500);
     } catch (e) { $('#lm').innerHTML = `<div class="msg w">${esc(e.message)}</div>`; $('#lb').disabled = false; }
   };
 }
@@ -208,7 +213,6 @@ V.home = () => {
     <button class="tile" onclick="go('settings')"><b>Settings</b><small>Head's details, PIN, sign out</small></button>
   </div>
   <div id="dash2"></div>
-  ${officer ? `<button class="btn alt full" onclick="S.emis=null;LS.del('emis');S.stack=[];render()">‹ Choose another institution</button>` : ''}
   ${DASH.credit()}`;
 };
 
@@ -468,8 +472,9 @@ V.emp = arg => {
   <label>Actually working at (only if attached elsewhere)</label><input name="working_at" value="${esc(e.working_at)}">
   ${placementBlock(e, posts)}
   <div id="histbox">${isNew ? histEditor([], []) : `<p class="muted">${navigator.onLine ? 'Loading service history…' : 'Service history can be viewed and edited when online.'}</p>`}</div>
-  <button class="btn full" id="es">${isNew ? 'Save employee' : 'Save changes'}</button>
-  ${isNew ? '' : `<button class="btn warn" onclick="go('depart',{cnic:'${esc(e.cnic)}',name:'${esc(e.name)}'})">Record retirement / death / leaving district</button>`}
+  ${arg.review ? `<div class="decide"><button class="btn" id="es">Save changes</button><button class="btn" style="background:var(--ok)" onclick="decide('approve')">Approve record</button><button class="btn warn" onclick="decide('return')">Return with remarks</button></div>`
+    : `<button class="btn full" id="es">${isNew ? 'Save employee' : 'Save changes'}</button>
+  ${isNew ? '' : `<button class="btn warn" onclick="go('depart',{cnic:'${esc(e.cnic)}',name:'${esc(e.name)}'})">Record retirement / death / leaving district</button>`}`}
   </div>`;
 };
 function histEditor(promos, posts) {
@@ -544,7 +549,7 @@ BIND.emp = async arg => {
     // show at once in the list
     const ex = d.employees.findIndex(x => x.cnic === f.cnic);
     if (ex >= 0) d.employees[ex] = Object.assign(d.employees[ex], f); else d.employees.push(Object.assign({ verified: 'Pending' }, f));
-    saveD(d); back();
+    saveD(d); if (arg.review) toast('Saved'); else back();
   };
 };
 
@@ -781,23 +786,19 @@ BIND.results = () => {
 };
 
 /* ---------- approvals ---------- */
-V.approvals = () => `<div class="card"><h2>Waiting for approval</h2><div id="al"><p class="muted">${navigator.onLine ? 'Loading…' : 'Approvals need internet.'}</p></div></div>`;
+V.approvals = () => `<div class="card"><h2>Waiting for approval</h2><div class="list" id="al"><p class="muted">${navigator.onLine ? 'Loading…' : 'Approvals need internet.'}</p></div></div>`;
 BIND.approvals = async () => {
   if (!navigator.onLine) return;
   const j = await api('listPending', {});
   const items = j.items || [];
   S.boot.pending = items.length; LS.set('boot', S.boot);
-  $('#al').innerHTML = items.length ? items.map((x, k) => `<div class="it"><div class="grow"><b>${esc(x.inst)}</b><div class="sub">${esc(x.what)} · ${esc(x.submitted_on)}</div>
-    ${(x.actions || ['approve', 'return']).map(a => a === 'approve' ? `<button class="btn" onclick="rev(${k},'approve')">Approve</button>`
-      : `<button class="btn warn" onclick="rev(${k},'return')">${x.sheet === 'Transfers' ? 'Reject' : 'Return'}</button>`).join('')}
-    <button class="btn alt" onclick="pick('${esc(x.emis)}')">Open school</button></div></div>`).join('') : '<p class="muted">Nothing is waiting.</p>';
-  window.rev = (k, decision) => {
-    const x = items[k]; let remark = '';
-    if (decision === 'return') { remark = prompt('Reason (the school will see it):') || ''; if (!remark) return; }
-    queue('review', { sheet: x.sheet, key: x.key, decision, remark }, `${decision === 'return' ? 'Return' : 'Approve'}: ${x.inst}`);
-    items.splice(k, 1); S.boot.pending = items.length; LS.set('boot', S.boot); BIND.approvals();
-  };
+  S.pendingItems = items;
+  const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer' };
+  $('#al').innerHTML = items.length ? `<p class="muted">Tap an item to see the full record and decide.</p>` + items.map((x, k) =>
+    `<div class="it tap" onclick="openReview(${k})"><div class="grow"><b>${esc(x.inst)}</b> <span class="pill">${KIND[x.sheet] || x.sheet}</span><div class="sub">${esc(x.what)}</div><div class="sub">${esc(x.submitted_on)} · ${esc(x.submitted_by)}</div></div><span class="chev">›</span></div>`).join('')
+    : '<p class="muted">Nothing is waiting.</p>';
 };
+window.openReview = k => { const x = S.pendingItems[k]; go('review', x); };
 
 /* ---------- about ---------- */
 V.about = () => `<div class="card about">
@@ -840,6 +841,293 @@ BIND.settings = () => {
     if (!j.ok) return toast(j.error);
     toast('PIN changed. Please sign in with the new PIN.'); signOut(true);
   };
+};
+
+
+
+/* =====================================================================
+   NAVIGATION SHELL — side menu, one-tap home, offline scope
+   ===================================================================== */
+const ICON = {
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
+  office: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/></svg>',
+  inst: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10l9-5 9 5-9 5z"/><path d="M7 12v5c0 1.5 2.5 3 5 3s5-1.5 5-3v-5M21 10v6"/></svg>',
+  staff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4.5-6.2"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l3 3 5-6"/></svg>',
+  report: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
+  posts: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h4"/></svg>',
+  enrol: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14M8 9h8M8 13h8M8 17h5"/></svg>',
+  fees: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M9 9.5h5.5a1.75 1.75 0 0 1 0 3.5H9.5M9 13h5.5a1.75 1.75 0 0 1 0 3.5H9M12 7v2.5M12 16.5V19"/></svg>',
+  results: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18l5-6 4 3 7-9"/><path d="M20 6v4h-4"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>'
+};
+
+const NAV = (() => {
+  const isOfficer = () => role() && role() !== 'SCHOOL';
+  const items = () => {
+    const i = inst(), isOffice = i.level === 'Office', primary = i.level === 'Primary' && role() === 'SCHOOL';
+    const p = (S.boot && S.boot.pending) || 0;
+    if (isOfficer()) return [
+      { id: 'dash', label: 'Dashboard', icon: 'home', on: S.view === 'home' && !S.emis, go: () => { S.emis = null; LS.del('emis'); S.stack = []; S.view = 'home'; render(); } },
+      { id: 'office', label: 'My office', icon: 'office', on: S.view === 'home' && S.emis === S.user.scope, go: () => pick(S.user.scope) },
+      { id: 'institutions', label: 'Institutions', icon: 'inst', on: S.view === 'institutions', go: () => jump('institutions') },
+      { id: 'search', label: 'Staff search', icon: 'search', on: S.view === 'search', go: () => jump('search') },
+      { id: 'approvals', label: 'Approvals', icon: 'check', count: p, on: S.view === 'approvals' || S.view === 'review', go: () => jump('approvals') },
+      { id: 'reports', label: 'Reports', icon: 'report', on: S.view === 'reports', go: () => jump('reports') },
+      { sec: S.emis && S.emis !== S.user.scope ? (i.name || S.emis) : '' },
+      ...(S.emis && S.emis !== S.user.scope ? [
+        { id: 'ihome', label: 'Overview', icon: 'home', on: S.view === 'home' && !!S.emis, go: () => jump('home') },
+        { id: 'istaff', label: 'Staff', icon: 'staff', on: S.view === 'staff', go: () => jump('staff') },
+        { id: 'iposts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
+        ...(isOffice ? [] : [
+          { id: 'ienrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
+          { id: 'ifees', label: 'Fees', icon: 'fees', on: S.view === 'fees', go: () => jump('fees') },
+          { id: 'iresults', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') }])
+      ] : []),
+      { sec: '' },
+      { id: 'settings', label: 'Settings', icon: 'settings', on: S.view === 'settings', go: () => jump('settings') },
+      { id: 'about', label: 'About', icon: 'info', on: S.view === 'about', go: () => jump('about') }
+    ];
+    return [
+      { id: 'home', label: 'My school', icon: 'home', on: S.view === 'home', go: () => jump('home') },
+      { id: 'staff', label: 'Staff', icon: 'staff', on: S.view === 'staff' || S.view === 'emp' || S.view === 'receive', go: () => jump('staff') },
+      { id: 'posts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
+      { id: 'enrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
+      { id: 'fees', label: primary ? 'Fees (by AEO)' : 'Fees', icon: 'fees', on: S.view === 'fees' || S.view === 'deposit', go: () => jump('fees') },
+      { id: 'results', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },
+      { id: 'reports', label: 'Reports', icon: 'report', on: S.view === 'reports', go: () => jump('reports') },
+      { sec: '' },
+      { id: 'settings', label: 'Settings', icon: 'settings', on: S.view === 'settings', go: () => jump('settings') },
+      { id: 'about', label: 'About', icon: 'info', on: S.view === 'about', go: () => jump('about') }
+    ];
+  };
+  let list = [];
+  function render() {
+    list = items();
+    $('#nav').innerHTML = list.map((it, k) => it.sec !== undefined ? (it.sec ? `<li class="sec">${esc(it.sec)}</li>` : '<li class="sec"></li>')
+      : `<li><a class="${it.on ? 'on' : ''}" onclick="NAV.pick(${k})">${ICON[it.icon] || ''}<span>${esc(it.label)}</span>${it.count ? `<span class="ct">${it.count}</span>` : ''}</a></li>`).join('');
+    $('#sidefoot').innerHTML = `${esc(S.user.name)}<br>${esc(S.user.code)}${S.operator ? ' · ' + esc(S.operator) : ''}`;
+  }
+  return {
+    render, pick: k => { const it = list[k]; close(); if (it && it.go) it.go(); },
+    open() { $('#side').classList.add('open'); $('#scrim').hidden = false; },
+    close, toggle() { $('#side').classList.contains('open') ? close() : NAV.open(); }
+  };
+  function close() { $('#side').classList.remove('open'); $('#scrim').hidden = true; }
+})();
+/** go to a top-level screen: resets the back stack so Back returns to home */
+function jump(view, arg) { S.stack = []; S.view = view; S.arg = arg; try { history.pushState({ v: view }, ''); } catch (e) { } render(); window.scrollTo(0, 0); }
+$('#menu').onclick = () => NAV.toggle();
+$('#scrim').onclick = () => NAV.close();
+$('#title').onclick = () => { if (!S.token) return; if (role() === 'SCHOOL') jump('home'); else { S.emis = null; LS.del('emis'); jump('home'); } };
+
+/* ---------- offline scope store (IndexedDB; falls back to memory) ---------- */
+const SCOPE = (() => {
+  let db = null, mem = null;
+  const open = () => new Promise(res => {
+    if (db) return res(db);
+    try {
+      const r = indexedDB.open('sds', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => { db = r.result; res(db); };
+      r.onerror = () => res(null);
+    } catch (e) { res(null); }
+  });
+  const key = () => 'scope_' + (S.user ? S.user.code : '');
+  async function get() {
+    if (mem) return mem;
+    const d = await open(); if (!d) return null;
+    return new Promise(res => { try { const t = d.transaction('kv').objectStore('kv').get(key()); t.onsuccess = () => { mem = t.result || null; res(mem); }; t.onerror = () => res(null); } catch (e) { res(null); } });
+  }
+  async function set(v) {
+    mem = v; const d = await open(); if (!d) return;
+    try { d.transaction('kv', 'readwrite').objectStore('kv').put(v, key()); } catch (e) { }
+  }
+  async function refresh(force) {
+    if (!S.token || role() === 'SCHOOL' || !navigator.onLine) return;
+    const cur = await get();
+    if (!force && cur && Date.now() - (cur.at || 0) < 6 * 3600e3) return;
+    try { const j = await api('downloadScope', {}); if (j.ok) { j.at = Date.now(); await set(j); toast('Offline copy updated'); } } catch (e) { }
+  }
+  /** build a getInstitution-like record from the offline copy */
+  async function institution(emis) {
+    const sc = await get(); if (!sc) return null;
+    const i = sc.institutions.find(x => x.emis === emis); if (!i) return null;
+    return { inst: i, posts: sc.posts.filter(p => p.ddo === i.ddo), employees: sc.employees.filter(e => e.emis === emis),
+      ddoFilled: null, enrolment: [], fees: [], deposits: [], results: [], transfersOut: [], transfersIn: [], departures: [], returned: [], offline: true, generated: sc.generated };
+  }
+  return { get, set, refresh, institution, clear: () => { mem = null; } };
+})();
+// officers: keep the offline copy fresh; when offline and an institution is not cached, use it
+(function () {
+  const origRefresh = refreshInst;
+  window.refreshInst = async function (silent) {
+    if (S.emis && !navigator.onLine && !D() && role() !== 'SCHOOL') { const d = await SCOPE.institution(S.emis); if (d) { saveD(d); render(); } return; }
+    return origRefresh(silent);
+  };
+})();
+if (S.token) setTimeout(() => SCOPE.refresh(false), 4000);
+
+/* ---------- institutions (officers) ---------- */
+V.institutions = () => `<div class="card"><h2>Institutions</h2>
+  <input id="if" placeholder="Search by name or EMIS code"><div class="seg" id="iseg"></div><div id="il"></div></div>`;
+BIND.institutions = async () => {
+  const all = (S.boot && S.boot.institutions || []).filter(i => i.level !== 'Office');
+  const sc = await SCOPE.get(); const fig = (sc && sc.figures) || {};
+  const groups = [['Higher Secondary', i => i.level === 'Higher Secondary'], ['High', i => i.level === 'High'], ['Middle', i => i.level === 'Middle']];
+  const circles = [...new Set(all.filter(i => i.level === 'Primary').map(i => i.aeo_circle))].sort();
+  circles.forEach(c => groups.push([c ? 'Primary · ' + c : 'Primary', i => i.level === 'Primary' && i.aeo_circle === c]));
+  const others = all.filter(i => !['Higher Secondary', 'High', 'Middle', 'Primary'].includes(i.level));
+  if (others.length) groups.push(['Other', i => others.includes(i)]);
+  let sel = LS.get('inst_group', '');
+  const open = {};
+  const draw = () => {
+    const q = $('#if').value.trim().toLowerCase();
+    const vis = groups.filter(([n, f]) => all.some(f));
+    $('#iseg').innerHTML = `<button class="${sel === '' ? 'on' : ''}" data-g="">All</button>` + vis.map(([n]) => `<button class="${sel === n ? 'on' : ''}" data-g="${esc(n)}">${esc(n.replace('Primary · ', ''))}</button>`).join('');
+    $('#iseg').querySelectorAll('button').forEach(b => b.onclick = () => { sel = b.dataset.g; LS.set('inst_group', sel); draw(); });
+    const row = i => { const f = fig[i.emis] || {}; return `<div class="it tap" onclick="pick('${esc(i.emis)}')"><div class="grow"><b>${esc(i.name)}</b><div class="sub">${esc(i.emis)}${i.halqa ? ' · ' + esc(i.halqa) : ''}${f.enrol ? ` · ${f.enrol} students (${monthLabel(f.enrolMonth)})` : f.enrolMonth === '' && sc ? ' · <span class="db-no">no enrolment entered</span>' : ''}</div></div><span class="chev">›</span></div>`; };
+    $('#il').innerHTML = vis.filter(([n]) => !sel || n === sel).map(([n, f]) => {
+      const list = all.filter(i => f(i) && (!q || (i.name + i.emis).toLowerCase().includes(q)));
+      if (!list.length) return '';
+      const collapsed = !q && !sel && vis.length > 1 && list.length > 12 && !open[n];
+      return `<div class="grp tap${collapsed ? '' : ' open'}" onclick="const l=this.nextElementSibling;l.hidden=!l.hidden;this.classList.toggle('open',!l.hidden)"><h3>${esc(n)}</h3><span>${list.length} <i class="chev">›</i></span></div><div class="list" ${collapsed ? 'hidden' : ''}>${list.map(row).join('')}</div>`;
+    }).join('') || '<p class="muted">No match.</p>';
+  };
+  $('#if').oninput = draw; draw();
+};
+
+/* ---------- staff search ---------- */
+V.search = () => `<div class="card"><h2>Staff search</h2>
+  <input id="sq" placeholder="${role() === 'SCHOOL' ? 'Name, CNIC or personnel number' : 'Name, CNIC, personnel number or school'}" autofocus>
+  <p class="muted" id="sn">${role() === 'SCHOOL' ? 'Searches the staff of this institution.' : 'Searches all institutions you supervise. Type at least 3 letters.'}</p>
+  <div class="list" id="sr"></div></div>`;
+BIND.search = () => {
+  let t;
+  const run = async () => {
+    const q = $('#sq').value.trim();
+    if (q.length < 3) { $('#sr').innerHTML = ''; return; }
+    $('#sn').textContent = 'Searching…';
+    let found = [], offline = false;
+    if (navigator.onLine) {
+      try { const j = await api('searchStaff', role() === 'SCHOOL' ? { q, emis: S.emis } : { q }); if (j.ok) found = j.found; } catch (e) { offline = true; }
+    } else offline = true;
+    if (offline) {   // offline copy
+      const ql = q.toLowerCase(), dg = q.replace(/\D/g, '');
+      const sc = await SCOPE.get(); const pool = sc ? sc.employees : ((D() || {}).employees || []);
+      const im = {}; (sc ? sc.institutions : [inst()]).forEach(i => { im[i.emis] = i; });
+      found = pool.filter(e => e.name.toLowerCase().includes(ql) || (dg.length >= 5 && e.cnic.replace(/\D/g, '').includes(dg)) || (e.personnel_no || '').toLowerCase() === ql || ((im[e.emis] || {}).name || '').toLowerCase().includes(ql))
+        .slice(0, 60).map(e => Object.assign({ station: (im[e.emis] || {}).name || e.emis, halqa: (im[e.emis] || {}).halqa || '' }, e));
+    }
+    $('#sn').textContent = found.length ? `${found.length} found${offline ? ' (offline copy)' : ''}` : 'No match.';
+    $('#sr').innerHTML = found.map((e, k) => `<div class="it tap" onclick="openStaff(${k})"><div class="grow"><b>${esc(e.name)}</b> <span class="muted">s/o ${esc(e.father_name || '')}</span>
+      <div class="sub">${esc(e.own_designation || e.designation)}${e.own_designation && e.own_designation !== e.designation ? ' · against ' + esc(e.designation) + ' post' : ''} · BPS ${esc(e.post_bps)}</div>
+      <div class="sub">${esc(e.station)}${e.halqa ? ' · ' + esc(e.halqa) : ''} · ${esc(e.cnic)}${e.personnel_no ? ' · P.No ' + esc(e.personnel_no) : ''}</div></div>
+      <span class="badge ${e.verified === 'Verified' ? 'o' : 'w'}">${e.verified === 'Verified' ? 'Verified' : 'Unverified'}</span><span class="chev">›</span></div>`).join('');
+    S.searchFound = found;
+  };
+  $('#sq').oninput = () => { clearTimeout(t); t = setTimeout(run, 350); };
+  $('#sq').focus();
+};
+/** switch to another institution and make sure its record is loaded (server, or offline copy) */
+async function ensureInst(emis) {
+  if (emis === S.emis && D()) return true;
+  S.emis = emis; LS.set('emis', emis);
+  if (D()) { refreshInst(true); return true; }
+  toast('Opening…');
+  if (navigator.onLine) { try { const j = await api('getInstitution', { emis }); if (j.ok) { saveD(j); return true; } } catch (e) { } }
+  const d = await SCOPE.institution(emis); if (d) { saveD(d); return true; }
+  toast('This institution is not available offline yet'); return false;
+}
+window.openStaff = async k => { const e = S.searchFound[k]; if (await ensureInst(e.emis)) go('emp', { cnic: e.cnic }); };
+
+/* ---------- reports ---------- */
+const HALQAS = ['Halqa 1', 'Halqa 2', 'Halqa 3', 'Halqa 4', 'Halqa 5'], LEVELS = ['Higher Secondary', 'High', 'Middle', 'Primary'];
+V.reports = () => `<div class="card noprint"><h2>Reports</h2><div class="seg" id="rp"></div>
+  ${role() !== 'SCHOOL' ? `<div class="row"><div><label>Halqa</label><select id="rh">${opts(HALQAS, LS.get('r_halqa', ''), 'All')}</select></div><div><label>Level</label><select id="rl">${opts(LEVELS, LS.get('r_level', ''), 'All')}</select></div></div>` : ''}
+  <p class="muted" id="rnote"></p></div>
+  <div class="card"><div class="db-sh rhead"><h3 id="rtitle"></h3><span class="noprint rbtn"><button class="btn alt" onclick="REP.csv()">Download CSV</button><button class="btn alt" onclick="window.print()">Print</button></span></div>
+  <div class="rwrap"><table class="rtable" id="rt"></table></div><p class="muted" id="rcount"></p></div>`;
+const REP = { cur: null,
+  csv() { if (!REP.cur) return; const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const txt = [REP.cur.head].concat(REP.cur.rows).map(r => r.map(q).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + txt], { type: 'text/csv' })); a.download = (REP.cur.title + ' ' + today()).replace(/[^\w\- ]+/g, '') + '.csv'; a.click(); } };
+BIND.reports = async () => {
+  let list = LS.get('reports_list', null);
+  if (navigator.onLine) { try { const j = await api('reportList', {}); if (j.ok) { list = j.reports; LS.set('reports_list', list); } } catch (e) { } }
+  if (!list) { $('#rnote').textContent = 'Reports need one connection to the internet first.'; return; }
+  let cur = LS.get('r_id', list[0].id);
+  const draw = async () => {
+    $('#rp').innerHTML = list.map(r => `<button class="${r.id === cur ? 'on' : ''}" data-id="${r.id}">${esc(r.title)}</button>`).join('');
+    $('#rp').querySelectorAll('button').forEach(b => b.onclick = () => { cur = b.dataset.id; LS.set('r_id', cur); draw(); });
+    const f = { id: cur, halqa: $('#rh') ? $('#rh').value : '', level: $('#rl') ? $('#rl').value : '' };
+    LS.set('r_halqa', f.halqa); LS.set('r_level', f.level);
+    const ck = 'rep_' + S.user.code + '_' + cur + '_' + f.halqa + '_' + f.level;
+    let r = LS.get(ck, null);
+    if (navigator.onLine) { $('#rnote').textContent = 'Loading…'; try { const j = await api('report', f); if (j.ok) { r = j; r.at = now_(); try { LS.set(ck, r); } catch (e) { } } } catch (e) { } }
+    if (!r) { $('#rnote').textContent = 'Not available offline yet.'; $('#rt').innerHTML = ''; return; }
+    REP.cur = r;
+    $('#rnote').textContent = r.note + (navigator.onLine ? '' : ` · offline copy from ${r.at}`);
+    $('#rtitle').textContent = r.title;
+    const num = v => typeof v === 'number';
+    $('#rt').innerHTML = `<thead><tr>${r.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${r.rows.slice(0, 1500).map(row => `<tr>${row.map(v => `<td class="${num(v) ? 'num' : ''}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+    $('#rcount').textContent = `${r.count} rows${r.rows.length > 1500 ? ' (first 1,500 shown; download CSV for all)' : ''}${r.truncated ? ' · narrow the filters for the complete list' : ''}`;
+  };
+  if ($('#rh')) { $('#rh').onchange = draw; $('#rl').onchange = draw; }
+  draw();
+};
+function now_() { return new Date().toISOString().slice(0, 16).replace('T', ' '); }
+
+/* ---------- review one approval item ---------- */
+V.review = x => `<div class="card"><h2>${esc(x.inst)}</h2><p class="muted">${esc(x.what)}<br>Submitted ${esc(x.submitted_on)} by ${esc(x.submitted_by)}</p><div id="rv"><p class="muted">${navigator.onLine ? 'Loading the record…' : 'Reviewing needs internet.'}</p></div></div>`;
+BIND.review = async x => {
+  if (!navigator.onLine) return;
+  if (x.sheet === 'Employees') {        // open the full employee form with decision buttons
+    if (!(await ensureInst(x.emis))) return;
+    S.view = 'emp'; S.arg = { cnic: x.key, review: x }; render(); return;
+  }
+  let j; try { j = await api('getReviewItem', { sheet: x.sheet, key: x.key }); } catch (e) { }
+  if (!j || !j.ok) { $('#rv').innerHTML = `<div class="msg w">${esc(j ? j.error : 'Could not load')}</div>`; return; }
+  const it = j.item; let html = '';
+  const tbl = (head, rows) => `<div class="scroll"><table>${head.map(h => `<th>${esc(h)}</th>`).join('')}${rows.map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</table></div>`;
+  if (x.sheet === 'Enrolment') {
+    const prev = {}; (it.previous || []).forEach(r => { prev[r.class] = Number(r.boys || 0) + Number(r.girls || 0); });
+    const rows = it.rows.sort((a, b) => CLASSES.indexOf(a.class) - CLASSES.indexOf(b.class));
+    let tb = 0, tg = 0, tp = 0;
+    html = tbl(['Class', 'Boys', 'Girls', 'Total', 'New adm.', it.previousMonth ? monthLabel(it.previousMonth) : 'Previous'], rows.map(r => { const t = Number(r.boys || 0) + Number(r.girls || 0); tb += Number(r.boys || 0); tg += Number(r.girls || 0); tp += prev[r.class] || 0; return [r.class, r.boys, r.girls, t, r.new_admissions, prev[r.class] == null ? '–' : prev[r.class]]; })
+      .concat([['Total', tb, tg, tb + tg, '', tp || '–']]));
+    html = `<h3>Enrolment, ${monthLabel(rows[0].month)}</h3>` + html;
+  } else if (x.sheet === 'FeeCollection') {
+    html = `<h3>Collection, ${monthLabel(it.rows[0].month)}</h3>` + tbl(['Fee head', 'Expected', 'Collected', 'Short'], it.rows.map(r => [r.fee_head.replace('_', ' '), r.expected, r.collected, Number(r.expected || 0) - Number(r.collected || 0)]))
+      + (it.rows[0].remark ? `<p class="muted">Reason given: ${esc(it.rows[0].remark)}</p>` : '')
+      + `<h3>Deposits that month</h3>` + (it.deposits.length ? tbl(['Account', 'Challan', 'Date', 'Amount'], it.deposits.map(d => [d.account, d.challan_no, d.challan_date, d.amount])) : '<p class="muted">None recorded.</p>');
+  } else if (x.sheet === 'FeeDeposits') {
+    const d = it.rows[0];
+    html = `<div class="kv2"><b>Account</b><span>${esc(d.account)}</span><b>Challan No.</b><span>${esc(d.challan_no)}</span><b>Date</b><span>${esc(d.challan_date)}</span><b>Amount</b><span>Rs ${esc(d.amount)}</span><b>Bank</b><span>${esc(d.bank_branch)}</span><b>For month</b><span>${monthLabel(d.month)}</span><b>Remarks</b><span>${esc(d.remark)}</span></div>`;
+  } else if (x.sheet === 'Results') {
+    const r0 = it.rows[0]; const en = it.enrolment && it.enrolment[0];
+    html = `<h3>${esc(r0.exam)}, Class ${esc(r0.class)}${r0.group ? ' ' + esc(r0.group) : ''}</h3>${en ? `<p class="muted">Enrolment in this class (${monthLabel(en.month)}): ${Number(en.boys || 0) + Number(en.girls || 0)}</p>` : ''}`
+      + tbl(['Subject', 'A+', 'A', 'B', 'C', 'D', 'E', 'F', 'Appeared', 'Passed', 'Pass %'], it.rows.map(r => [r.subject, r.aplus, r.a, r.b, r.c, r.d, r.e, r.f, r.appeared, r.passed, r.appeared ? Math.round(r.passed * 1000 / r.appeared) / 10 + '%' : '']));
+  } else if (x.sheet === 'Transfers') {
+    const t = it.transfer, e = it.employee;
+    html = `<div class="kv2"><b>Employee</b><span>${esc(t.name)}, ${esc(t.designation)}</span><b>From</b><span>${esc(t.from_name)}</span><b>To</b><span>${esc(t.to_name)} · against ${esc(t.new_designation)} post${t.placement ? ' (' + esc(t.placement) + ')' : ''}</span>
+      <b>Order</b><span>${esc(t.order_no)}${t.order_date ? ' dt ' + esc(t.order_date) : ''}</span><b>Joined</b><span>${esc(t.joined_on)}</span><b>Relieved</b><span>${t.relieved_on ? esc(t.relieved_on) + ' (confirmed by ' + esc(t.outgoing_by) + ')' : '<span class="db-no">not yet confirmed by the outgoing institution</span>'}</span>
+      <b>Officer approvals</b><span>${t.out_approved_by ? '✓ outgoing side (' + esc(t.out_approved_by) + ')' : '… outgoing side'}<br>${t.approved_by ? '✓ receiving side (' + esc(t.approved_by) + ')' : '… receiving side'}</span></div>`
+      + (e ? `<h3>Service record</h3><div class="kv2"><b>CNIC</b><span>${esc(e.employee.cnic)}</span><b>Own title</b><span>${esc(e.employee.own_designation || e.employee.designation)} (BPS-${esc(e.employee.own_bps || e.employee.post_bps)})</span><b>First appointed</b><span>${esc(e.employee.first_appt_date)} as ${esc(e.employee.first_designation)}</span><b>Postings</b><span>${e.postings.map(p => esc(p.station_name) + ' ' + esc(p.from_date) + '–' + esc(p.to_date || 'now')).join('<br>') || '–'}</span></div>` : '');
+  }
+  const verb = x.sheet === 'Transfers' ? 'Reject' : 'Return';
+  $('#rv').innerHTML = html + `<div class="decide"><button class="btn" style="background:var(--ok)" onclick="decide('approve')">Approve</button><button class="btn warn" onclick="decide('return')">${verb} with remarks</button><button class="btn alt" onclick="pick('${esc(x.emis)}')">Open institution</button></div>`;
+};
+window.decide = decision => {
+  const x = S.view === 'emp' ? (S.arg && S.arg.review) : S.arg;
+  if (!x) return;
+  let remark = '';
+  if (decision === 'return') { remark = prompt('Remarks (the school will see them):') || ''; if (!remark) return; }
+  queue('review', { sheet: x.sheet, key: x.key, decision, remark }, `${decision === 'return' ? 'Returned' : 'Approved'}: ${x.inst}`);
+  if (S.pendingItems) { S.pendingItems = S.pendingItems.filter(p => p.key !== x.key); S.boot.pending = S.pendingItems.length; LS.set('boot', S.boot); }
+  jump('approvals');
 };
 
 /* ---------------- start ---------------- */
