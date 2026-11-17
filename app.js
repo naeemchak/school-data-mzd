@@ -62,6 +62,7 @@ async function sync() {
       if (!x.ok) { const it = ob.find(o => o.client_id === x.client_id); errs.push({ label: it ? it.label : '', error: x.error, ts: new Date().toISOString() }); }
     });
     LS.set('outbox', outbox().filter(o => !done[o.client_id]));
+    if (Object.keys(done).length) { S.dashStale = true; if (S.view === 'home' && $('#dash')) DASH.load($('#dash'), role() !== 'SCHOOL' ? S.emis : ''); }   // figures change after a save
     LS.set('errors', errs);
     if (j.results.some(x => !x.ok)) toast('Some entries were not accepted. See Home.');
     syncing = false;
@@ -126,7 +127,7 @@ function render() {
   document.body.classList.toggle('wide', ['home', 'reports', 'institutions', 'search', 'review', 'approvals'].includes(S.view));
   $('#back').hidden = !S.stack.length;
   const i = inst();
-  const TOP = { institutions: 'Institutions', search: 'Staff search', approvals: 'Approvals', review: 'Review', reports: 'Reports', settings: 'Settings', about: 'About' };
+  const TOP = { building: '', institutions: 'Institutions', search: 'Staff search', approvals: 'Approvals', review: 'Review', reports: 'Reports', settings: 'Settings', about: 'About' };
   $('#title').textContent = TOP[S.view] && role() !== 'SCHOOL' ? TOP[S.view] : S.emis ? (i.name || S.emis) : S.user.name;
   NAV.render();
   if (S.view === 'home' && role() !== 'SCHOOL' && !S.emis) { app.innerHTML = V.picker(); bindPicker(); showSync(); return; }
@@ -208,7 +209,8 @@ V.home = () => {
     <button class="tile" onclick="go('posts')"><b>Posts</b><small>Sanctioned vs filled</small><div class="ur">آسامیاں</div></button>
     ${isOffice ? '' : `<button class="tile" onclick="go('enrol')"><b>Enrolment</b><small>Monthly, class-wise</small><div class="ur">داخلہ</div></button>
     <button class="tile" onclick="go('fees')"><b>Fees</b><small>${primaryFees ? 'Entered by AEO' : 'Collection and deposits'}</small><div class="ur">فیس</div></button>
-    <button class="tile" onclick="go('results')"><b>Results</b><small>Term, annual, monthly tests</small><div class="ur">نتائج</div></button>`}
+    <button class="tile" onclick="go('results')"><b>Results</b><small>Term, annual, monthly tests</small><div class="ur">نتائج</div></button>
+    <button class="tile" onclick="go('building')"><b>Building</b><small>${d && d.facilities ? 'Facilities profile · ' + (d.facilities.status === 'Accepted' ? 'recorded' : String(d.facilities.status).toLowerCase()) : 'Facilities profile not entered yet'}</small><div class="ur">عمارت</div></button>`}
     ${officer ? `<button class="tile" onclick="go('approvals')"><b>Approvals</b><small>${(S.boot && S.boot.pending) || 0} waiting</small><div class="ur">منظوری</div></button>` : ''}
     <button class="tile" onclick="go('settings')"><b>Settings</b><small>Head's details, PIN, sign out</small></button>
   </div>
@@ -793,7 +795,7 @@ BIND.approvals = async () => {
   const items = j.items || [];
   S.boot.pending = items.length; LS.set('boot', S.boot);
   S.pendingItems = items;
-  const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer' };
+  const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer', Facilities: 'Building' };
   $('#al').innerHTML = items.length ? `<p class="muted">Tap an item to see the full record and decide.</p>` + items.map((x, k) =>
     `<div class="it tap" onclick="openReview(${k})"><div class="grow"><b>${esc(x.inst)}</b> <span class="pill">${KIND[x.sheet] || x.sheet}</span><div class="sub">${esc(x.what)}</div><div class="sub">${esc(x.submitted_on)} · ${esc(x.submitted_by)}</div></div><span class="chev">›</span></div>`).join('')
     : '<p class="muted">Nothing is waiting.</p>';
@@ -861,6 +863,7 @@ const ICON = {
   fees: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M9 9.5h5.5a1.75 1.75 0 0 1 0 3.5H9.5M9 13h5.5a1.75 1.75 0 0 1 0 3.5H9M12 7v2.5M12 16.5V19"/></svg>',
   results: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18l5-6 4 3 7-9"/><path d="M20 6v4h-4"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  building: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-5h6v5M9 11h2M13 11h2"/></svg>',
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>'
 };
 
@@ -884,7 +887,8 @@ const NAV = (() => {
         ...(isOffice ? [] : [
           { id: 'ienrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
           { id: 'ifees', label: 'Fees', icon: 'fees', on: S.view === 'fees', go: () => jump('fees') },
-          { id: 'iresults', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') }])
+          { id: 'iresults', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },
+          { id: 'ibuilding', label: 'Building', icon: 'building', on: S.view === 'building', go: () => jump('building') }])
       ] : []),
       { sec: '' },
       { id: 'settings', label: 'Settings', icon: 'settings', on: S.view === 'settings', go: () => jump('settings') },
@@ -897,6 +901,7 @@ const NAV = (() => {
       { id: 'enrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
       { id: 'fees', label: primary ? 'Fees (by AEO)' : 'Fees', icon: 'fees', on: S.view === 'fees' || S.view === 'deposit', go: () => jump('fees') },
       { id: 'results', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },
+      { id: 'building', label: 'Building', icon: 'building', on: S.view === 'building', go: () => jump('building') },
       { id: 'reports', label: 'Reports', icon: 'report', on: S.view === 'reports', go: () => jump('reports') },
       { sec: '' },
       { id: 'settings', label: 'Settings', icon: 'settings', on: S.view === 'settings', go: () => jump('settings') },
@@ -1116,6 +1121,10 @@ BIND.review = async x => {
       <b>Order</b><span>${esc(t.order_no)}${t.order_date ? ' dt ' + esc(t.order_date) : ''}</span><b>Joined</b><span>${esc(t.joined_on)}</span><b>Relieved</b><span>${t.relieved_on ? esc(t.relieved_on) + ' (confirmed by ' + esc(t.outgoing_by) + ')' : '<span class="db-no">not yet confirmed by the outgoing institution</span>'}</span>
       <b>Officer approvals</b><span>${t.out_approved_by ? '✓ outgoing side (' + esc(t.out_approved_by) + ')' : '… outgoing side'}<br>${t.approved_by ? '✓ receiving side (' + esc(t.approved_by) + ')' : '… receiving side'}</span></div>`
       + (e ? `<h3>Service record</h3><div class="kv2"><b>CNIC</b><span>${esc(e.employee.cnic)}</span><b>Own title</b><span>${esc(e.employee.own_designation || e.employee.designation)} (BPS-${esc(e.employee.own_bps || e.employee.post_bps)})</span><b>First appointed</b><span>${esc(e.employee.first_appt_date)} as ${esc(e.employee.first_designation)}</span><b>Postings</b><span>${e.postings.map(p => esc(p.station_name) + ' ' + esc(p.from_date) + '–' + esc(p.to_date || 'now')).join('<br>') || '–'}</span></div>` : '');
+  }
+  if (x.sheet === 'Facilities') {
+    const f = it.rows[0];
+    html = `<p class="muted">Entered ${esc(f.submitted_on)} by ${esc(f.submitted_by)}. Verify on inspection; open the institution to correct any figure before approving.</p>` + facilitiesSummary(f);
   }
   const verb = x.sheet === 'Transfers' ? 'Reject' : 'Return';
   $('#rv').innerHTML = html + `<div class="decide"><button class="btn" style="background:var(--ok)" onclick="decide('approve')">Approve</button><button class="btn warn" onclick="decide('return')">${verb} with remarks</button><button class="btn alt" onclick="pick('${esc(x.emis)}')">Open institution</button></div>`;

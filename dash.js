@@ -172,6 +172,33 @@ const DASH = (() => {
         single ? `<button class="btn alt" onclick="go('results')">Enter results</button>` : '');
     const results = sec('Learning outcomes', R.exam ? `Latest: ${esc(R.examLabel || R.exam)}` : '', resBody, 'db-s12');
 
+    /* buildings and facilities */
+    const I = d.infra || { entered: 0, total: 0, list: [] };
+    let infraBody;
+    if (!I.entered) infraBody = empty(single ? 'The building and facilities profile has not been entered yet.' : 'No institution has entered its building and facilities profile yet.',
+      single ? `<button class="btn alt" onclick="go('building')">Enter profile</button>` : '');
+    else if (single) {
+      const f = I.list[0];
+      infraBody = `<div class="db-mini">
+        ${fig(I.studentsPerRoom == null ? '–' : nf(I.studentsPerRoom), 'Students per usable classroom', I.classroomsUsable ? plural(I.classroomsUsable, 'usable classroom') : 'No usable classroom', I.studentsPerRoom > 40 ? 'warn' : '')}
+        ${fig(I.seated == null ? '–' : I.seated + '%', 'Students with a seat', 'Desks and tablet chairs', I.seated != null && I.seated < 60 ? 'warn' : '')}
+        ${fig(I.shelterless ? 'Shelterless' : I.dangerous ? 'Dangerous' : I.majorRepair ? 'Major repair' : 'Sound', 'Building', '', I.shelterless || I.dangerous ? 'warn' : 'up')}
+        ${fig(I.noWater || I.noToilet || I.noElectricity || I.noWall ? [I.noWater && 'water', I.noToilet && 'toilet', I.noElectricity && 'power', I.noWall && 'wall'].filter(Boolean).join(', ') : 'Complete', 'Basic facilities missing', '', I.noWater || I.noToilet ? 'warn' : 'up')}
+      </div>${f ? `<p class="db-p db-small">Flagged: ${esc(f.what)}.</p>` : ''}`;
+    } else {
+      const probs = [['shelterless', I.shelterless, 'Shelterless'], ['dangerous', I.dangerous, 'Dangerous buildings'], ['noWater', I.noWater, 'No drinking water'], ['noToilet', I.noToilet, 'No usable toilet'],
+        ['noElectricity', I.noElectricity, 'No electricity'], ['noWall', I.noWall, 'No boundary wall'], ['noUsableDesks', I.noUsableDesks, 'No furniture']].filter(x => x[1]);
+      infraBody = `<div class="db-mini">
+        ${fig(`${nf(I.entered)} / ${nf(I.total)}`, 'Profiles entered', pct(I.entered, I.total) + '% of institutions', I.entered < I.total ? 'warn' : 'up')}
+        ${fig(I.studentsPerRoom == null ? '–' : nf(I.studentsPerRoom), 'Students per usable classroom', 'Where profiles are entered')}
+        ${fig(I.seated == null ? '–' : I.seated + '%', 'Students with a seat', 'Desks and tablet chairs')}
+        ${fig(nf(I.rented), 'In rented buildings', '')}
+      </div>
+      ${probs.length ? hbars(probs.map(x => ({ label: x[2], value: x[1], tip: `${x[2]}: ${plural(x[1], 'institution')}` })), { cls: 'vw' }) : '<p class="db-p">No shortage flagged in the profiles entered so far.</p>'}
+      ${I.list.length ? `<div class="db-nr">${I.list.slice(0, 8).map(i => `<button class="db-chip" onclick="pick('${esc(i.emis)}')" title="${esc(i.what)}">${esc(i.name)}</button>`).join('')}</div>` : ''}`;
+    }
+    const infra = sec('Buildings and facilities', I.entered && !single ? plural(I.entered, 'profile') : '', infraBody, single ? 'db-s12' : 'db-s6');
+
     /* retirements */
     const ret = d.retiring.count ? `<ul class="db-ret">${d.retiring.next.map(r => `<li><div><b>${esc(r.name)}</b><span>${esc(r.designation)}${single ? '' : ', ' + esc(r.inst)}</span></div><time>${esc(fmtTime(r.date).replace(', ', ''))}</time></li>`).join('')}</ul>
       ${d.retiring.count > d.retiring.next.length ? `<div class="db-more">and ${nf(d.retiring.count - d.retiring.next.length)} more</div>` : ''}`
@@ -185,15 +212,15 @@ const DASH = (() => {
       const maxS = Math.max(1, ...d.units.map(u => u.students));
       table = sec(halqa ? 'By Halqa' : 'By institution', halqa ? '' : plural(d.units.length, 'institution'),
         `<div class="db-tw"><table class="db-t"><thead><tr><th>${halqa ? 'Halqa' : 'Institution'}</th>${halqa ? '<th class="n">Reporting</th>' : '<th>Updated</th>'}
-        <th class="db-tsb">Students</th><th class="n">Staff</th><th class="n">Pupils / teacher</th><th class="n">Vacant posts</th><th class="n">Pass rate</th></tr></thead><tbody>
+        <th class="db-tsb">Students</th><th class="n">Staff</th><th class="n">Pupils / teacher</th><th class="n">Vacant posts</th><th class="n">Pass rate</th>${halqa ? '<th class="n">Profiles</th>' : ''}</tr></thead><tbody>
         ${d.units.map(u => `<tr ${u.emis ? `onclick="pick('${esc(u.emis)}')" class="db-click"` : ''}><td><b>${esc(u.name)}</b><span>${esc(u.sub)}</span></td>
           ${halqa ? `<td class="n">${nf(u.reporting)}/${nf(u.institutions)}</td>` : `<td>${u.lastMonth ? `<span class="db-ok">${monthLabel(u.lastMonth)}</span>` : '<span class="db-no">Not updated</span>'}</td>`}
           <td class="db-tsb"><span class="db-tbar"><i style="width:${u.students * 100 / maxS}%"></i></span>${nf(u.students)}</td>
           <td class="n">${nf(u.staff)}</td><td class="n">${u.ptr == null ? '–' : u.ptr}</td><td class="n">${u.vacant == null ? '–' : nf(u.vacant)}</td>
-          <td class="n">${u.pass == null ? '–' : u.pass + '%'}</td></tr>`).join('')}</tbody></table></div>`, 'db-s12');
+          <td class="n">${u.pass == null ? '–' : u.pass + '%'}</td>${halqa ? `<td class="n">${nf(u.profiles || 0)}${u.problems ? ` <span class="db-no">(${u.problems})</span>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>`, 'db-s12');
     }
 
-    return { hero: `<div class="db">${hero}</div>`, grid: `<div class="db"><div class="db-grid">${attention}${staffing}${results}${students}${fees}${table}${retire}</div></div>` };
+    return { hero: `<div class="db">${hero}</div>`, grid: `<div class="db"><div class="db-grid">${attention}${staffing}${results}${students}${fees}${infra}${table}${retire}</div></div>` };
   }
 
   /* ---------- tooltip (hover on desktop, tap on phones) ---------- */
@@ -230,7 +257,8 @@ const DASH = (() => {
     else el.innerHTML = `<div class="db-loading">${navigator.onLine ? 'Loading figures…' : 'Figures appear here after the first connection to the internet.'}</div>`;
     if (!navigator.onLine) return;
     try {
-      const j = await api('dashboard', Object.assign({ fresh: fresh ? 1 : 0 }, emis ? { emis } : {}));
+      const stale = fresh || S.dashStale; S.dashStale = false;
+      const j = await api('dashboard', Object.assign({ fresh: stale ? 1 : 0 }, emis ? { emis } : {}));
       if (j.ok && j.dash) { LS.set(key(emis), j.dash); if (target && target.el === el && document.body.contains(el)) paint(el, j.dash); }
     } catch (e) { /* keep cached figures */ }
   }
