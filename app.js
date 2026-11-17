@@ -247,7 +247,7 @@ V.staff = () => {
   const pend = outbox().filter(o => o.payload && (o.payload.employee || o.payload.cnic) && (o.payload.to_emis === S.emis || (o.payload.employee && o.payload.employee.emis === S.emis)));
   const list = d.employees.slice().sort((a, b) => Number(b.post_bps || 0) - Number(a.post_bps || 0)).map(e =>
     `<div class="it" onclick="go('emp',{cnic:'${esc(e.cnic)}'})"><div class="grow"><b>${esc(e.name)}</b>
-    <div class="sub">${outOfTitle(e) ? esc(e.own_designation) + ' <span class="badge w">against ' + esc(e.designation) + ' post</span>' : esc(e.designation)} · BPS ${esc(e.post_bps)}${e.personal_bps && e.personal_bps !== e.post_bps ? ' (personal ' + esc(e.personal_bps) + ')' : ''} · ${esc(e.service_status)}
+    <div class="sub">${outOfTitle(e) ? esc(e.own_designation) + ' <span class="badge w">' + (e.placement === 'Current charge basis' ? 'current charge' : e.placement === 'Officiating basis' ? 'officiating' : BASES.includes(e.placement) ? 'against' : 'basis not stated') + ': ' + esc(e.designation) + ' post</span>' : esc(e.designation)} · BPS ${esc(e.post_bps)}${e.personal_bps && e.personal_bps !== e.post_bps ? ' (personal ' + esc(e.personal_bps) + ')' : ''} · ${esc(e.service_status)}
     ${e.charge_type ? '<br><span class="badge">' + esc(e.charge_type) + ': ' + esc(e.charge_designation) + '</span>' : ''}</div></div>
     <span class="badge ${e.verified === 'Verified' ? 'o' : 'w'}">${e.verified === 'Verified' ? 'Verified' : 'Unverified'}</span></div>`).join('');
   // requests from other institutions for this institution's staff: confirm relieving or reject
@@ -286,6 +286,8 @@ const MODE = ['Initial recruitment (PSC)', 'Initial recruitment (testing agency)
 const BPS = Array.from({ length: 22 }, (_, k) => String(k + 1));
 const PLACEMENTS = ['Against own post', 'Posted against another post', 'Appointed against another post'];
 const CHARGES = ['Additional charge', 'Current charge'];
+const BASES = ['Current charge basis', 'Officiating basis', 'Against another post of the same scale'];
+const BASIS_HELP = { 'Current charge basis': 'Posted by order against a vacant higher post; draws own scale. The post is shown as vacant.', 'Officiating basis': 'Holds the higher post pending the selection board; draws the scale of the post. The post counts as filled.', 'Against another post of the same scale': 'Another job title of the same BPS (e.g. Subject Specialist working as Headmaster).' };
 const normT = t => String(t || '').toLowerCase().replace(/[^a-z]/g, '');
 const outOfTitle = e => !!e.own_designation && !!e.designation && normT(e.own_designation) !== normT(e.designation);
 /** all departmental job titles in AJK (budget books 2026-27, Male and Female); server sends the same list */
@@ -403,11 +405,13 @@ function titleOpts(sel, selBps) {
 function placementBlock(e, posts) {
   return `<h3>Own job title and post occupied</h3>
   <label>Own job title (substantive designation of the employee) *</label><select name="own_title">${titleOpts(e.own_designation, e.own_bps)}</select>
-  <div id="plw" ${outOfTitle(e) ? '' : 'hidden'}><div class="msg w">The post occupied has a different job title. Say how the employee came to hold it.</div>
-  <label>How placed against this post</label><select name="placement">${opts(PLACEMENTS.slice(1), e.placement)}</select>
-  <label>Order No. and date of this posting / appointment</label><input name="placement_order" value="${esc(e.placement_order)}"></div>
-  <h3>Charge of another post (if any)</h3>
-  <label>Holds additional / current charge of another post?</label><select name="charge_type">${opts(CHARGES, e.charge_type, 'No')}</select>
+  <div id="plw" ${outOfTitle(e) ? '' : 'hidden'}><div class="msg w">The post occupied has a different job title. On what basis does the employee hold it?</div>
+  <label>Basis of holding the post *</label><select name="placement">${opts(BASES, BASES.includes(e.placement) ? e.placement : '', e.placement && !BASES.includes(e.placement) ? '— basis not stated yet: choose —' : '— choose —')}</select>
+  <p class="muted" id="bhelp">${esc(BASIS_HELP[e.placement] || '')}</p>
+  <label>Order No. and date of this posting / promotion</label><input name="placement_order" value="${esc(e.placement_order)}"></div>
+  <h3>Additional charge of another post (if any)</h3>
+  <p class="muted">Duties of another post (vacant, or its holder on long leave) given in addition to the employee's own post — e.g. a Headmaster holding additional charge of a vacant Principal post.</p>
+  <label>Holds additional charge of another post?</label><select name="charge_type">${opts(CHARGES, e.charge_type, 'No')}</select>
   <div id="chw" ${e.charge_type ? '' : 'hidden'}>
   <label>Post held under charge</label><select name="charge_post_id">${opts(posts, e.charge_post_id, '— choose —')}</select>
   <div class="row"><div><label>Charge order No. and date</label><input name="charge_order" value="${esc(e.charge_order)}"></div>
@@ -429,6 +433,7 @@ function bindPlacement(root) {
     upd();
   });
   ['own_title', 'charge_type'].forEach(n => q(n).addEventListener('change', upd));
+  q('placement').addEventListener('change', () => { root.querySelector('#bhelp').textContent = BASIS_HELP[q('placement').value] || ''; });
   upd();
 }
 function readPlacement(f, post) {
@@ -465,7 +470,7 @@ V.emp = arg => {
   <label>Designation at first appointment *</label><input name="first_designation" value="${esc(e.first_designation)}" placeholder="e.g. Primary Teacher">
   <label>Mode of first appointment</label><select name="appt_mode">${opts(MODE, e.appt_mode, '—')}</select>
   <h3>Present post</h3>
-  <label>Post occupied (sanctioned post against which salary is drawn) *</label><select name="post_id">${opts(posts, e.post_id, '— choose —')}</select>
+  <label>Post occupied (sanctioned post in the institution's budget) *</label><select name="post_id">${opts(posts, e.post_id, '— choose —')}</select>
   <div class="row"><div><label>Personal BPS, if different (upgradation / move-over)</label><select name="personal_bps">${opts(BPS, e.personal_bps, 'Same as post')}</select></div>
   <div><label>Current basic pay (Rs) *</label><input name="basic_pay" value="${esc(e.basic_pay)}" inputmode="numeric"></div></div>
   <div class="row"><div><label>Employment status</label><select name="service_status">${opts(STATUS, e.service_status)}</select></div>
@@ -536,6 +541,7 @@ BIND.emp = async arg => {
     Object.assign(f, { emis: S.emis, designation: p.designation, post_bps: String(p.bps) });
     if (!f.own_title) return toast('Choose the employee\'s own job title from the list');
     readPlacement(f, p);
+    if (outOfTitle(f) && !BASES.includes(f.placement)) return toast('Say on what basis the employee holds this post (current charge, officiating, or same scale)');
     if (f.charge_type && !f.charge_post_id) return toast('Choose the post held under charge');
     if (f.charge_type && f.charge_post_id === f.post_id) return toast('Charge post cannot be the post occupied');
     if (f.charge_post_id) f.charge_designation = (d.posts.find(x => x.post_id === f.charge_post_id) || {}).designation || '';

@@ -98,7 +98,7 @@ const DASH = (() => {
       : P.atCircle ? `<p class="db-p">Posts of primary schools are sanctioned at AEO circle level; the AEO's dashboard shows the vacancy position.</p>` : '')
       + `<div class="db-mini">
         ${fig(St.nonRegular ? nf(St.nonRegular) : '0', 'Non-regular', 'Temporary, ad hoc, contract')}
-        ${fig(nf(St.outOfTitle), 'Against another post', 'Own title differs from post')}
+        ${fig(nf(St.outOfTitle), 'Against another post', [St.currentCharge ? nf(St.currentCharge) + ' current charge' : '', St.officiating ? nf(St.officiating) + ' officiating' : '', St.basisUnstated ? nf(St.basisUnstated) + ' basis not stated' : ''].filter(Boolean).join(' · ') || 'Own title differs from post', St.basisUnstated ? 'warn' : '')}
         ${fig(nf(St.charges), 'Holding charge', 'Additional or current')}
         ${fig(ptr == null ? '–' : '1 : ' + ptr, 'Pupils per teacher', ptr == null ? 'Needs staff and enrolment' : `${nf(St.teaching)} teaching staff`)}
       </div>`
