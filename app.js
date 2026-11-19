@@ -62,7 +62,7 @@ async function sync() {
       if (!x.ok) { const it = ob.find(o => o.client_id === x.client_id); errs.push({ label: it ? it.label : '', error: x.error, ts: new Date().toISOString() }); }
     });
     LS.set('outbox', outbox().filter(o => !done[o.client_id]));
-    if (Object.keys(done).length) { S.dashStale = true; if (S.view === 'home' && $('#dash')) DASH.load($('#dash'), role() !== 'SCHOOL' ? S.emis : ''); }   // figures change after a save
+    if (Object.keys(done).length) { S.dashStale = true; if (typeof REG !== 'undefined' && S.emis) REG.refresh(true).then(() => { if (S.view === 'students' && BIND.students) BIND.students(); }); if (S.view === 'home' && $('#dash')) DASH.load($('#dash'), role() !== 'SCHOOL' ? S.emis : ''); }   // figures change after a save
     LS.set('errors', errs);
     if (j.results.some(x => !x.ok)) toast('Some entries were not accepted. See Home.');
     syncing = false;
@@ -83,7 +83,8 @@ setInterval(sync, 60000);
 /* ---------------- data ---------------- */
 const instKey = e => 'inst_' + e;
 const D = () => LS.get(instKey(S.emis), null);
-const saveD = d => LS.set(instKey(S.emis), d);
+const saveD = d => { if (!d.register) { const old = D(); if (old && old.register) d.register = old.register; }   // the student register lives beside the institution record
+  LS.set(instKey(S.emis), d); };
 async function refreshInst(silent) {
   if (!S.emis || !navigator.onLine) return;
   try {
@@ -210,6 +211,7 @@ V.home = () => {
     ${isOffice ? '' : `<button class="tile" onclick="go('enrol')"><b>Enrolment</b><small>Monthly, class-wise</small><div class="ur">داخلہ</div></button>
     <button class="tile" onclick="go('fees')"><b>Fees</b><small>${primaryFees ? 'Entered by AEO' : 'Collection and deposits'}</small><div class="ur">فیس</div></button>
     <button class="tile" onclick="go('results')"><b>Results</b><small>Term, annual, monthly tests</small><div class="ur">نتائج</div></button>
+    <button class="tile" onclick="go('students')"><b>Students</b><small>${d && d.register && d.register.students ? d.register.students.length + ' enrolled in the register' : 'Admission register'}</small><div class="ur">طلبہ</div></button>
     <button class="tile" onclick="go('building')"><b>Building</b><small>${d && d.facilities ? 'Facilities profile · ' + (d.facilities.status === 'Accepted' ? 'recorded' : String(d.facilities.status).toLowerCase()) : 'Facilities profile not entered yet'}</small><div class="ur">عمارت</div></button>`}
     ${officer ? `<button class="tile" onclick="go('approvals')"><b>Approvals</b><small>${(S.boot && S.boot.pending) || 0} waiting</small><div class="ur">منظوری</div></button>` : ''}
     <button class="tile" onclick="go('settings')"><b>Settings</b><small>Head's details, PIN, sign out</small></button>
@@ -635,7 +637,10 @@ BIND.enrol = () => {
     const m = $('#nm').value;
     let src = d.enrolment.filter(r => r.month === m);
     const prefilled = !src.length;
-    if (!src.length) { const prev = d.enrolment.map(r => r.month).filter(x => x < m).sort().pop(); src = d.enrolment.filter(r => r.month === prev).map(r => Object.assign({}, r, { new_admissions: 0 })); }
+    const fromReg = typeof REG !== 'undefined' && REG.students().length > 0;
+    if (!src.length && fromReg) src = REG.counts(m);
+    else if (!src.length) { const prev = d.enrolment.map(r => r.month).filter(x => x < m).sort().pop(); src = d.enrolment.filter(r => r.month === prev).map(r => Object.assign({}, r, { new_admissions: 0 })); }
+    const note = $('#nf p.muted'); if (note && fromReg) note.innerHTML = 'Figures are counted from the <b>student register</b> for the month chosen. If a figure is wrong, correct the register (admit or record leaving) and come back; then press Save.';
     const g = c => src.find(r => r.class === c) || {};
     const st = (d.enrolment.find(r => r.month === m) || {}).status;
     $('#nt').innerHTML = `<tr><th>Class</th><th>Boys</th><th>Girls</th><th>New adm.</th></tr>` + cls.map(c =>
@@ -870,6 +875,7 @@ const ICON = {
   results: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18l5-6 4 3 7-9"/><path d="M20 6v4h-4"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   building: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-5h6v5M9 11h2M13 11h2"/></svg>',
+  students: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="7" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0M3 11h3M18 11h3"/></svg>',
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>'
 };
 
@@ -891,6 +897,7 @@ const NAV = (() => {
         { id: 'istaff', label: 'Staff', icon: 'staff', on: S.view === 'staff', go: () => jump('staff') },
         { id: 'iposts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
         ...(isOffice ? [] : [
+          { id: 'istudents', label: 'Students', icon: 'students', on: ['students', 'student', 'sleft', 'sprint'].includes(S.view), go: () => jump('students') },
           { id: 'ienrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
           { id: 'ifees', label: 'Fees', icon: 'fees', on: S.view === 'fees', go: () => jump('fees') },
           { id: 'iresults', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },
@@ -904,6 +911,7 @@ const NAV = (() => {
       { id: 'home', label: 'My school', icon: 'home', on: S.view === 'home', go: () => jump('home') },
       { id: 'staff', label: 'Staff', icon: 'staff', on: S.view === 'staff' || S.view === 'emp' || S.view === 'receive', go: () => jump('staff') },
       { id: 'posts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
+      { id: 'students', label: 'Students', icon: 'students', on: ['students', 'student', 'withdraw', 'slc', 'simport', 'sleft', 'sprint'].includes(S.view), go: () => jump('students') },
       { id: 'enrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
       { id: 'fees', label: primary ? 'Fees (by AEO)' : 'Fees', icon: 'fees', on: S.view === 'fees' || S.view === 'deposit', go: () => jump('fees') },
       { id: 'results', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },

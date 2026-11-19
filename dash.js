@@ -199,6 +199,23 @@ const DASH = (() => {
     }
     const infra = sec('Buildings and facilities', I.entered && !single ? plural(I.entered, 'profile') : '', infraBody, single ? 'db-s12' : 'db-s6');
 
+    /* student registers */
+    const RG = d.reg || { schools: 0, total: 0, reasons: {}, gap: [] };
+    let regBody;
+    if (!RG.schools) regBody = empty(single ? 'The student register has not been started.' : 'No school has started its student register yet.', single ? `<button class="btn alt" onclick="go('students')">Open register</button>` : '');
+    else {
+      const reasons = Object.keys(RG.reasons).map(k => ({ label: k, value: RG.reasons[k], tip: `${k}: ${plural(RG.reasons[k], 'child')}` })).sort((a, b) => b.value - a.value);
+      regBody = `<div class="db-mini">
+        ${single ? fig(nf(RG.enrolled), 'Children in the register', `${nf(RG.boys)} boys · ${nf(RG.girls)} girls`) : fig(`${nf(RG.schools)} / ${nf(RG.total)}`, 'Registers started', pct(RG.schools, RG.total) + '% of institutions', RG.schools < RG.total ? 'warn' : 'up')}
+        ${single ? fig(nf(RG.admitted12), 'Admitted, last 12 months', '') : fig(nf(RG.enrolled), 'Children registered', `${nf(RG.boys)} boys · ${nf(RG.girls)} girls`)}
+        ${fig(nf(RG.dropouts12), 'Dropouts, last 12 months', RG.left12 ? `of ${plural(RG.left12, 'leaver')}` : '', RG.dropouts12 ? 'warn' : '')}
+        ${fig(RG.enrolled ? pct(RG.withBform, RG.enrolled) + '%' : '–', 'With B-Form', `${nf(RG.orphans)} orphans · ${nf(RG.disabled)} with disability`)}
+      </div>
+      ${reasons.length ? `<p class="db-p db-small">Why children dropped out</p>` + hbars(reasons, { cls: 'vw' }) : ''}
+      ${RG.gap.length ? `<p class="db-p db-small">Register and reported enrolment differ</p><div class="db-nr">${RG.gap.map(g => `<button class="db-chip" onclick="pick('${esc(g.emis)}')" title="register ${g.register}, reported ${g.reported}">${esc(g.name)} <span class="db-no">${g.register} / ${g.reported}</span></button>`).join('')}</div>` : ''}`;
+    }
+    const regSec = sec('Student registers', RG.schools && !single ? plural(RG.schools, 'school') : '', regBody, single ? 'db-s12' : 'db-s6');
+
     /* retirements */
     const ret = d.retiring.count ? `<ul class="db-ret">${d.retiring.next.map(r => `<li><div><b>${esc(r.name)}</b><span>${esc(r.designation)}${single ? '' : ', ' + esc(r.inst)}</span></div><time>${esc(fmtTime(r.date).replace(', ', ''))}</time></li>`).join('')}</ul>
       ${d.retiring.count > d.retiring.next.length ? `<div class="db-more">and ${nf(d.retiring.count - d.retiring.next.length)} more</div>` : ''}`
@@ -220,7 +237,7 @@ const DASH = (() => {
           <td class="n">${u.pass == null ? '–' : u.pass + '%'}</td>${halqa ? `<td class="n">${nf(u.profiles || 0)}${u.problems ? ` <span class="db-no">(${u.problems})</span>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>`, 'db-s12');
     }
 
-    return { hero: `<div class="db">${hero}</div>`, grid: `<div class="db"><div class="db-grid">${attention}${staffing}${results}${students}${fees}${infra}${table}${retire}</div></div>` };
+    return { hero: `<div class="db">${hero}</div>`, grid: `<div class="db"><div class="db-grid">${attention}${staffing}${results}${students}${fees}${regSec}${infra}${table}${retire}</div></div>` };
   }
 
   /* ---------- tooltip (hover on desktop, tap on phones) ---------- */

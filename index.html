@@ -16,6 +16,8 @@
 @font-face{font-family:"IBM Plex Sans";font-weight:400;font-display:swap;src:url(fonts/plex-400.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Sans";font-weight:500;font-display:swap;src:url(fonts/plex-500.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Sans";font-weight:600;font-display:swap;src:url(fonts/plex-600.woff2) format("woff2")}
+@font-face{font-family:Naskh;font-weight:400;font-display:swap;src:url(fonts/naskh.woff2) format("woff2")}
+@font-face{font-family:Naskh;font-weight:700;font-display:swap;src:url(fonts/naskh-b.woff2) format("woff2")}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 header{position:sticky;top:0;z-index:5;background:var(--pine);color:#fff;border-bottom:3px solid var(--accent);padding:10px 16px calc(10px);display:flex;align-items:center;gap:10px}
 header h1{font-weight:500;font-size:16px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -230,6 +232,33 @@ body.wide main{max-width:1200px}
 .tri3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.tri3 input{margin:0}.tri3 small{display:block;font-size:11.5px;color:var(--mute);margin-top:2px;text-align:center}
 .gps{padding:10px 0}.gps-ok{margin-bottom:8px;font-size:15px}.gps-ok .sub{font-size:13px;color:var(--mute)}
 @media (prefers-color-scheme:dark){.yn button.on,.chips button.on,.fsec button.on.done{color:#0b1a10}}
+
+/* students */
+.ur2{font-family:Naskh,"Noto Naskh Arabic",serif;direction:rtl;font-size:17px}
+input.ur2{text-align:right}
+.steps{padding-left:20px;margin:8px 0 12px;font-size:14px}.steps li{margin:4px 0}
+.chk{display:flex;gap:8px;align-items:center;font-size:14px;margin:10px 0}.chk input{width:auto;margin:0}
+fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled input,fieldset:disabled select{opacity:.7}
+/* printable A4 forms */
+.page{background:#fff;color:#111;width:210mm;min-height:297mm;padding:14mm 16mm;position:relative;margin:0 auto;box-shadow:0 2px 12px rgba(0,0,0,.12);font:11.5pt/1.4 "IBM Plex Sans",sans-serif;box-sizing:border-box}
+.pf-wrap{overflow:auto}
+.page .ur{font-family:Naskh,serif;direction:rtl;unicode-bidi:isolate;color:#111;font-size:12pt}
+.page .lh{display:grid;grid-template-columns:22mm 1fr 22mm;align-items:center;border-bottom:2.5px solid #0b3a2c;padding-bottom:4mm;margin-bottom:5mm}
+.page .seal{width:20mm;height:20mm;border:1.5px solid #0b3a2c;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7pt;color:#0b3a2c;text-align:center}
+.page .lh .c{text-align:center}.page .lh .gov{font-size:8pt;color:#0b3a2c;white-space:nowrap}.page .lh h1{font-size:15pt;margin:1mm 0;font-weight:600;color:#0b3a2c}.page .lh .sub{font-size:9pt;color:#444}
+.page .doc{text-align:center;margin:3mm 0 5mm}.page .doc h2{display:inline-block;margin:0;padding:2mm 8mm;border:1.5px solid #0b3a2c;border-radius:2mm;font-size:13pt;font-weight:600;letter-spacing:.04em;color:#0b3a2c}.page .doc .ex{font-size:10.5pt;color:#333;margin-top:1.5mm}
+.page .sec{font-weight:600;color:#0b3a2c;border-bottom:1px solid #0b3a2c;margin:3mm 0 1.5mm;font-size:10.5pt;display:flex;justify-content:space-between}
+.page .row{display:grid;gap:4mm;margin-bottom:1.5mm;font-size:10pt}
+.page .f{border-bottom:1px solid #333;min-height:6mm;display:flex;align-items:flex-end;justify-content:space-between;padding:0 1mm;gap:3mm}
+.page .f span{color:#555;font-size:9pt;white-space:nowrap}.page .f b{font-weight:500;text-align:right;white-space:nowrap}
+.page .tick{display:flex;gap:2.5mm;flex-wrap:wrap;font-size:9pt;align-items:center}.page .tick span{white-space:nowrap}
+.page .tick i{display:inline-block;width:3.5mm;height:3.5mm;border:1px solid #333;margin-right:1.5mm;vertical-align:-0.5mm}.page .tick i.on{background:#0b3a2c}
+.page .c2{grid-template-columns:1fr 1fr}.page .c3{grid-template-columns:1fr 1fr 1fr}.page .c21{grid-template-columns:2fr 1fr}
+.page .note{font-size:9pt;color:#333;margin-top:3mm}
+.page .sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10mm;margin-top:7mm;margin-bottom:8mm;text-align:center;font-size:10pt}.page .sig div{border-top:1px solid #333;padding-top:1.5mm}
+.page .foot{position:absolute;bottom:8mm;left:16mm;right:16mm;font-size:8pt;color:#666;display:flex;justify-content:space-between}
+@media (max-width:900px){.page{transform:scale(.46);transform-origin:top left;margin:0 0 -160mm 0}}
+@media print{@page{size:A4;margin:0}html,body{margin:0;padding:0;background:#fff;height:auto;overflow:visible}body.nav{padding-left:0}header,#side,#scrim,#toast,.noprint,.toast{display:none!important}main{padding:0;margin:0;max-width:none}.page{box-shadow:none;margin:0;transform:none;height:290mm;min-height:0;overflow:hidden;page-break-inside:avoid;page-break-after:avoid}#app{overflow:hidden}}
 </style>
 </head>
 <body>
@@ -244,6 +273,7 @@ body.wide main{max-width:1200px}
 <script src="dash.js"></script>
 <script src="app.js"></script>
 <script src="building.js"></script>
+<script src="students.js"></script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>
