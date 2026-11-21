@@ -109,7 +109,8 @@ const TT = {
   save(label) {
     const v = TT.get(); const secs = TT.sections();
     const assignments = []; secs.forEach(sec => TT.rows(sec).forEach(r => { if (r.periods || r.teacher_id) assignments.push({ class: sec.class, section: sec.section, subject: r.subject, teacher_id: r.teacher_id, teacher_name: TT.tname(r.teacher_id), periods: r.periods, combine: r.combine }); }));
-    queue('saveTimetable', { emis: S.emis, date: today(), sections: secs.map(s => ({ class: s.class, section: s.section, group: s.group, electives: s.electives })), assignments, grid: v.grid }, label || 'Timetable');
+    const pl = TT.placed(), cs = secs.map(sec => TT.compliance(sec, TT.rows(sec), v.grid.length ? pl : null)).filter(x => x != null);
+    queue('saveTimetable', { emis: S.emis, date: today(), compliance: cs.length ? Math.round(cs.reduce((a, b) => a + b, 0) / cs.length) : null, sections: secs.map(s => ({ class: s.class, section: s.section, group: s.group, electives: s.electives })), assignments, grid: v.grid }, label || 'Timetable');
     v._dirty = false; TT.set(v);
   }
 };

@@ -307,6 +307,33 @@ details.att{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}de
 .ttpage{break-after:page;page-break-after:always;margin-bottom:16px}.ttpage h3{font-size:15px}
 @page ttland{size:A4 landscape;margin:10mm}
 @media print{.ttprint{page:ttland}.ttpage .ttg td.tc{height:14mm;border:1px solid #999}.ttpage .ttg{min-width:0}}
+
+/* implementation index */
+.ihero{display:flex;gap:20px;align-items:center}@media(max-width:600px){.ihero{flex-direction:column;align-items:stretch;text-align:left}.ihero>div:first-child{align-self:center}}
+.iring .trk{fill:none;stroke:var(--line);stroke-width:12}.iring .val{fill:none;stroke-width:12;stroke-linecap:round}.iring text{font:600 34px "IBM Plex Sans",sans-serif;fill:var(--ink)}
+.iring.green .val{stroke:var(--ok)}.iring.amber .val{stroke:var(--accent)}.iring.red .val{stroke:#b3261e}
+.iword{font-weight:600;margin:0 0 10px}.iword.green{color:var(--ok)}.iword.amber{color:#8a5a00}.iword.red{color:#b3261e}
+.ibar{display:grid;grid-template-columns:70px 1fr 54px;gap:10px;align-items:center;font-size:13.5px;margin:6px 0}.ibar>div{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+.ibar i{display:block;height:100%;background:var(--brand);border-radius:99px}.ibar b{text-align:right;font-variant-numeric:tabular-nums}.ibar small{color:var(--mute);font-weight:400}
+.ick{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;color:#fff}
+.ick.on{background:var(--ok);border-color:var(--ok)}.ick.half{border-color:var(--accent);background:linear-gradient(90deg,var(--accent) 50%,transparent 50%)}
+.ipts{font-variant-numeric:tabular-nums;font-weight:600;font-size:14px}.ipts small{color:var(--mute);font-weight:400}
+.ichips{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 8px}.ich{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:8px 12px;cursor:pointer;text-align:left;color:var(--ink)}
+.ich b{display:block;font-size:20px}.ich.green b{color:var(--ok)}.ich.amber b{color:#8a5a00}.ich.red b{color:#b3261e}.ich.on{outline:2px solid var(--brand)}
+.isc{min-width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-variant-numeric:tabular-nums;color:#fff;flex:none}
+.isc.green{background:var(--ok)}.isc.amber{background:var(--accent);color:#1b1300}.isc.red{background:#b3261e}
+/* certificates */
+.certp{width:297mm;height:206mm;overflow:hidden;margin:0 auto 12px;background:#fff;color:#1a1a1a;box-shadow:0 2px 12px rgba(0,0,0,.12);padding:9mm;box-sizing:border-box;page-break-after:always;break-after:page}
+.cfr{border:2.5px solid #0b3a2c;height:100%;padding:3mm;box-sizing:border-box}.cin{border:1px solid #d9961a;height:100%;box-sizing:border-box;padding:10mm 18mm;text-align:center;position:relative;font-family:"IBM Plex Sans",sans-serif}
+.cseal{width:22mm;height:22mm;border:1.5px solid #0b3a2c;border-radius:50%;margin:0 auto 3mm;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#0b3a2c}
+.cgov{font-size:10pt;color:#0b3a2c;letter-spacing:.02em}.cin h1{font-size:30pt;font-weight:600;color:#0b3a2c;margin:6mm 0 3mm;letter-spacing:.01em}
+.cby{margin:0;font-size:12pt;color:#555}.cname{font-size:24pt;font-weight:600;margin:2mm 0 0;color:#1a1a1a}.cof{font-size:13pt;margin:1mm 0 5mm;color:#333}
+.ctext{font-size:12pt;line-height:1.55;max-width:200mm;margin:0 auto}.csig{display:flex;justify-content:space-around;gap:10mm;position:absolute;left:18mm;right:18mm;bottom:16mm}
+.csig div{flex:1;font-size:9.5pt;color:#333}.csig span{display:block;border-top:1px solid #333;margin-bottom:2mm;height:1px}
+.cfoot{position:absolute;left:0;right:0;bottom:5mm;font-size:8pt;color:#777;margin:0}
+@page certland{size:A4 landscape;margin:0}
+@media print{#certs{page:certland}.certp{box-shadow:none;margin:0}.certp:last-child{break-after:auto;page-break-after:auto}}
+@media (max-width:900px){.certp{transform:scale(.33);transform-origin:top left;margin-bottom:-138mm}}
 </style>
 </head>
 <body>
@@ -325,6 +352,7 @@ details.att{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}de
 <script src="attendance.js"></script>
 <script src="staffing.js"></script>
 <script src="timetable.js"></script>
+<script src="impl.js"></script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>

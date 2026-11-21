@@ -154,13 +154,14 @@ function render() {
   NAV.close();
   if (!S.token) { document.body.classList.remove('wide', 'nav'); $('#side').hidden = true; $('#menu').hidden = true; $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
   document.body.classList.add('nav'); $('#side').hidden = false; $('#menu').hidden = false;
-  document.body.classList.toggle('wide', ['home', 'reports', 'institutions', 'search', 'review', 'approvals', 'attmonth', 'timetable', 'ttprint'].includes(S.view));
+  document.body.classList.toggle('wide', ['home', 'reports', 'institutions', 'search', 'review', 'approvals', 'attmonth', 'timetable', 'ttprint', 'impl', 'cert'].includes(S.view));
   $('#back').hidden = !S.stack.length;
   const i = inst();
   const TOP = { building: '', institutions: 'Institutions', search: 'Staff search', approvals: 'Approvals', review: 'Review', reports: 'Reports', settings: 'Settings', about: 'About' };
   $('#title').textContent = TOP[S.view] && role() !== 'SCHOOL' ? TOP[S.view] : S.emis ? (i.name || S.emis) : S.user.name;
   NAV.render();
   if (S.view === 'home' && role() !== 'SCHOOL' && !S.emis) { app.innerHTML = V.picker(); bindPicker(); showSync(); return; }
+  if (!S.emis && role() !== 'SCHOOL' && S.view === 'impl') { app.innerHTML = V.impl(); BIND.impl(); showSync(); return; }
   app.innerHTML = (V[S.view] || V.home)(S.arg);
   (BIND[S.view] || (() => { }))(S.arg);
   showSync();
@@ -240,6 +241,7 @@ V.home = () => {
     ${isOffice ? '' : `<button class="tile" onclick="go('enrol')"><b>Enrolment</b><small>Monthly, class-wise</small><div class="ur">داخلہ</div></button>
     <button class="tile" onclick="go('fees')"><b>Fees</b><small>${primaryFees ? 'Entered by AEO' : 'Collection and deposits'}</small><div class="ur">فیس</div></button>
     <button class="tile" onclick="go('results')"><b>Results</b><small>Term, annual, monthly tests</small><div class="ur">نتائج</div></button>
+    <button class="tile" onclick="go('impl')"><b>Implementation</b><small>Your score and what is still to do</small><div class="ur">عمل درآمد</div></button>
     <button class="tile" onclick="go('timetable')"><b>Timetable</b><small>Subjects, teachers and periods</small><div class="ur">ٹائم ٹیبل</div></button>
     <button class="tile tile-att" onclick="go('attendance')"><b>Attendance</b><small>Teachers and students, today</small><div class="ur">حاضری</div></button>
     <button class="tile" onclick="go('students')"><b>Students</b><small>${d && d.register && d.register.students ? d.register.students.length + ' enrolled in the register' : 'Admission register'}</small><div class="ur">طلبہ</div></button>
@@ -916,7 +918,10 @@ V.settings = () => {
   const i = inst(), isInst = i.level && i.level !== 'Office';
   return `${isInst ? `<div class="card" id="hf"><h2>Head of institution</h2>
   <label>Name of head / in-charge</label><input name="head_name" value="${esc(i.head_name)}">
-  <label>Mobile</label><input name="head_mobile" value="${esc(i.head_mobile)}" inputmode="tel"><button class="btn" id="hs">Save</button></div>` : ''}
+  <label>Mobile</label><input name="head_mobile" value="${esc(i.head_mobile)}" inputmode="tel">
+  <h3>App focal person</h3><p class="muted">The member of staff nominated by the head to keep the app up to date.</p>
+  <div class="row"><div><label>Name</label><input name="focal_name" value="${esc(i.focal_name)}"></div><div><label>Designation</label><input name="focal_designation" value="${esc(i.focal_designation)}"></div></div>
+  <label>Mobile (WhatsApp)</label><input name="focal_mobile" value="${esc(i.focal_mobile)}" inputmode="tel"><button class="btn" id="hs">Save</button></div>` : ''}
   <div class="card"><h2>Change PIN</h2><label>Current PIN</label><input id="p0" type="password" inputmode="numeric">
   <label>New 6-digit PIN</label><input id="p1" type="password" inputmode="numeric" maxlength="6"><button class="btn" id="pc">Change PIN</button>
   <p class="muted">Keep the PIN with the head. On handing over charge, the new head should change it.</p></div>
@@ -929,8 +934,10 @@ V.settings = () => {
 BIND.settings = () => {
   if ($('#hs')) $('#hs').onclick = () => {
     const f = formData($('#hf')); f.emis = S.emis;
-    queue('updateHead', f, 'Head details');
+    for (const k of ['head_mobile', 'focal_mobile']) if (f[k] && !/^0\d{10}$/.test(f[k].replace(/\D/g, ''))) return toast('Mobile numbers should be 11 digits starting with 0');
+    queue('updateHead', f, 'Head and focal person');
     const b = S.boot.institutions.find(x => x.emis === S.emis); if (b) Object.assign(b, f); LS.set('boot', S.boot);
+    const d = D(); if (d) { Object.assign(d.inst, f); saveD(d); } toast('Saved');
   };
   $('#pc').onclick = async () => {
     if (!navigator.onLine) return toast('Changing the PIN needs internet');
@@ -960,6 +967,7 @@ const ICON = {
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   building: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-5h6v5M9 11h2M13 11h2"/></svg>',
   attendance: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M8.5 15l2.2 2.2 4.8-4.7"/></svg>',
+  impl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5A8.5 8.5 0 0 1 20.5 12H12z" fill="currentColor" stroke="none" opacity=".35"/><path d="M8.5 12.5l2.3 2.3 4.7-5"/></svg>',
   timetable: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M15 9v11M3 14.5h18"/></svg>',
   smc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="7" r="3"/><circle cx="5" cy="10" r="2.3"/><circle cx="19" cy="10" r="2.3"/><path d="M7 20a5 5 0 0 1 10 0M1.5 19a3.6 3.6 0 0 1 5.5-3M22.5 19a3.6 3.6 0 0 0-5.5-3"/></svg>',
   students: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="7" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0M3 11h3M18 11h3"/></svg>',
@@ -973,6 +981,7 @@ const NAV = (() => {
     const p = (S.boot && S.boot.pending) || 0;
     if (isOfficer()) return [
       { id: 'dash', label: 'Dashboard', icon: 'home', on: S.view === 'home' && !S.emis, go: () => { S.emis = null; LS.del('emis'); S.stack = []; S.view = 'home'; render(); } },
+      { id: 'impl', label: 'Implementation', icon: 'impl', on: (S.view === 'impl' && (!S.emis || S.emis === S.user.scope)) || S.view === 'cert', go: () => { S.emis = null; LS.del('emis'); jump('impl'); } },
       { id: 'office', label: 'My office', icon: 'office', on: S.view === 'home' && S.emis === S.user.scope, go: () => pick(S.user.scope) },
       { id: 'institutions', label: 'Institutions', icon: 'inst', on: S.view === 'institutions', go: () => jump('institutions') },
       { id: 'search', label: 'Staff search', icon: 'search', on: S.view === 'search', go: () => jump('search') },
@@ -981,6 +990,7 @@ const NAV = (() => {
       { sec: S.emis && S.emis !== S.user.scope ? (i.name || S.emis) : '' },
       ...(S.emis && S.emis !== S.user.scope ? [
         { id: 'ihome', label: 'Overview', icon: 'home', on: S.view === 'home' && !!S.emis, go: () => jump('home') },
+        { id: 'iimpl', label: 'Implementation', icon: 'impl', on: S.view === 'impl', go: () => jump('impl') },
         { id: 'istaff', label: 'Staff', icon: 'staff', on: S.view === 'staff', go: () => jump('staff') },
         { id: 'iposts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
         ...(isOffice ? [] : [
@@ -999,6 +1009,7 @@ const NAV = (() => {
     ];
     return [
       { id: 'home', label: 'My school', icon: 'home', on: S.view === 'home', go: () => jump('home') },
+      { id: 'impl', label: 'Implementation', icon: 'impl', on: S.view === 'impl', go: () => jump('impl') },
       { id: 'staff', label: 'Staff', icon: 'staff', on: S.view === 'staff' || S.view === 'emp' || S.view === 'receive', go: () => jump('staff') },
       { id: 'posts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
       { id: 'timetable', label: 'Timetable', icon: 'timetable', on: ['timetable', 'ttprint'].includes(S.view), go: () => jump('timetable') },
