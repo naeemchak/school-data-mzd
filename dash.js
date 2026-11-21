@@ -119,7 +119,7 @@ const DASH = (() => {
         { label: 'Collected', value: F.collected, tip: 'Collected: Rs ' + nf(F.collected) },
         { label: 'Deposited', value: F.deposited, tip: 'Deposited by challan: Rs ' + nf(F.deposited) }], { fmt: v => 'Rs ' + nf(v) })}
       <div class="db-mini db-mini3">
-        ${fig(F.expected ? pct(F.collected, F.expected) + '%' : '–', 'Collected of expected')}
+        ${fig(F.expected ? pct(F.collected, F.expected) + '%' : '–', 'Collected of expected', F.short || F.excess ? [F.short ? 'Rs ' + nf(F.short) + ' short' : '', F.excess ? 'Rs ' + nf(F.excess) + ' over' : ''].filter(Boolean).join(' · ') : '', F.short ? 'warn' : '')}
         ${fig(F.collected ? pct(F.deposited, F.collected) + '%' : '–', 'Deposited of collected')}
         ${fig('Rs ' + nf(Math.max(0, F.collected - F.deposited)), 'Not yet deposited', '', F.collected - F.deposited > 0 ? 'warn' : '')}
       </div>`
@@ -199,6 +199,27 @@ const DASH = (() => {
     }
     const infra = sec('Buildings and facilities', I.entered && !single ? plural(I.entered, 'profile') : '', infraBody, single ? 'db-s12' : 'db-s6');
 
+    /* attendance */
+    const AT = d.att || { started: false };
+    let attBody;
+    if (!AT.started) attBody = empty(single ? 'Attendance has not been marked yet. Teacher attendance is required from 1 December 2026.' : 'No institution has marked attendance yet. Teacher attendance is required from 1 December 2026.',
+      single ? `<button class="btn alt" onclick="go('attendance')">Mark attendance</button>` : '');
+    else {
+      const T = AT.staff, sp = AT.students.enrolled ? pct(AT.students.present, AT.students.enrolled) : null;
+      attBody = `<p class="db-p db-small">${AT.today ? 'Today' : 'Last day marked'}: ${esc(fmtTime(AT.date).replace(', ', ''))}${AT.closed ? ` · ${plural(AT.closed, 'institution')} closed` : ''}</p><div class="db-mini">
+        ${single ? fig(T.marked ? `${nf(T.present)}<small>/${nf(T.total)}</small>` : '–', 'Staff present', T.marked < T.total ? `${nf(T.total - T.marked)} not marked` : 'all marked', T.marked < T.total ? 'warn' : 'up')
+          : fig(`${nf(AT.marked)}<small>/${nf(AT.institutions)}</small>`, 'Institutions marked', AT.marked ? `${nf(AT.onTime)} by 11:00` : '', AT.marked < AT.institutions ? 'warn' : 'up')}
+        ${fig(T.marked ? pct(T.present, T.marked) + '%' : '–', 'Staff present', single ? '' : `${nf(T.present)} of ${nf(T.marked)} marked`)}
+        ${fig(nf(T.late), 'Arrived late', T.early ? `${nf(T.early)} left early` : '', T.late ? 'warn' : '')}
+        ${fig(nf(T.absent), 'Absent without leave', `${nf(T.leave)} on leave${T.duty ? ` · ${nf(T.duty)} on duty` : ''}`, T.absent ? 'warn' : '')}
+        ${fig(sp == null ? '–' : sp + '%', 'Students present', AT.students.schools ? (single ? `${nf(AT.students.present)} of ${nf(AT.students.enrolled)}` : `${plural(AT.students.schools, 'school')} marked`) : 'not marked')}
+      </div>
+      ${T.noDeparture ? `<p class="db-p db-small">${plural(T.noDeparture, 'departure')} not yet recorded.</p>` : ''}
+      ${!single && AT.notMarked && AT.notMarked.length ? `<p class="db-p db-small">Not marked${AT.notMarkedCount > AT.notMarked.length ? ` (${nf(AT.notMarkedCount)}; first ${AT.notMarked.length})` : ''}</p><div class="db-nr">${AT.notMarked.map(i => `<button class="db-chip" onclick="pick('${esc(i.emis)}')">${esc(i.name)}</button>`).join('')}</div>` : ''}
+      ${!single && AT.absentList.length ? `<p class="db-p db-small">Staff absent without leave</p><div class="db-nr">${AT.absentList.map(i => `<button class="db-chip" onclick="pick('${esc(i.emis)}')">${esc(i.name)} <span class="db-no">${i.n}</span></button>`).join('')}</div>` : ''}`;
+    }
+    const attSec = sec('Attendance', '', attBody, 'db-s12');
+
     /* student registers */
     const RG = d.reg || { schools: 0, total: 0, reasons: {}, gap: [] };
     let regBody;
@@ -237,7 +258,7 @@ const DASH = (() => {
           <td class="n">${u.pass == null ? '–' : u.pass + '%'}</td>${halqa ? `<td class="n">${nf(u.profiles || 0)}${u.problems ? ` <span class="db-no">(${u.problems})</span>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>`, 'db-s12');
     }
 
-    return { hero: `<div class="db">${hero}</div>`, grid: `<div class="db"><div class="db-grid">${attention}${staffing}${results}${students}${fees}${regSec}${infra}${table}${retire}</div></div>` };
+    return { hero: `<div class="db">${hero}</div>`, grid: `<div class="db"><div class="db-grid">${attention}${attSec}${staffing}${results}${students}${fees}${regSec}${infra}${table}${retire}</div></div>` };
   }
 
   /* ---------- tooltip (hover on desktop, tap on phones) ---------- */

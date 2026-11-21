@@ -110,7 +110,7 @@ V.building = () => {
   const badge = !st ? '' : `<span class="pill ${st === 'Approved' || st === 'Accepted' ? 'ok' : st === 'Returned' ? 'bad' : ''}">${st === 'Accepted' ? 'Recorded' : st}</span>`;
   return `<div class="card noprint"><div class="db-sh rhead"><h3>Building and facilities ${badge}</h3></div>
     ${!st ? '<p class="muted">Entered once, then updated only when something changes. The supervising officer verifies it on inspection.</p>'
-      : `<p class="muted">Last updated ${esc(f.updated_on)} by ${esc(f.submitted_by)}${f.reviewed_by ? ' · ' + (st === 'Returned' ? 'returned' : 'verified') + ' by ' + esc(f.reviewed_by) + ' on ' + esc(f.reviewed_on) : ''}${f.remark ? '<br><b>Remarks:</b> ' + esc(f.remark) : ''}</p>`}
+      : `<p class="muted">Last updated ${esc(dmy(f.updated_on))} by ${esc(f.submitted_by)}${f.reviewed_by ? ' · ' + (st === 'Returned' ? 'returned' : 'verified') + ' by ' + esc(f.reviewed_by) + ' on ' + esc(dmy(f.reviewed_on)) : ''}${f.remark ? '<br><b>Remarks:</b> ' + esc(f.remark) : ''}</p>`}
     <div class="seg fsec" id="fsec"></div></div>
     <div id="fbody"></div>
     <div class="decide noprint"><button class="btn" id="fsave">Save profile</button><button class="btn alt" id="fnext">Next section ›</button></div>`;
@@ -187,7 +187,7 @@ function facilitiesSummary(f) {
       if (x.t === 'tri') { const u = d[x.k + '_u'], xx = d[x.k + '_x'], r = d[x.k + '_r']; return (u || xx || r) ? `<b>${esc(x.l)}</b><span>${u || 0} usable · ${xx || 0} unusable · ${r || 0} needed</span>` : ''; }
       return d[x.k] ? `<b>${esc(x.l)}</b><span>${esc(d[x.k])}</span>` : '';
     }).filter(Boolean);
-    if (s.id === 'F' && d.gps_lat) rows.unshift(`<b>GPS</b><span>${Number(d.gps_lat).toFixed(5)}, ${Number(d.gps_lng).toFixed(5)} (± ${Math.round(d.gps_acc || 0)} m, ${esc(d.gps_at)})<br><a href="https://maps.google.com/?q=${d.gps_lat},${d.gps_lng}" target="_blank" rel="noopener">Open in Maps</a></span>`);
+    if (s.id === 'F' && d.gps_lat) rows.unshift(`<b>GPS</b><span>${Number(d.gps_lat).toFixed(5)}, ${Number(d.gps_lng).toFixed(5)} (± ${Math.round(d.gps_acc || 0)} m, ${esc(dmy(d.gps_at))})<br><a href="https://maps.google.com/?q=${d.gps_lat},${d.gps_lng}" target="_blank" rel="noopener">Open in Maps</a></span>`);
     return rows.length ? `<h3>${esc(s.title)}</h3><div class="kv2">${rows.join('')}</div>` : '';
   }).join('');
 }

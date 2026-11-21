@@ -89,7 +89,7 @@ V.student = arg => {
   const sel = (n, l, o, blank) => `<label>${l}</label><select name="${n}">${opts(o, s[n] || '', blank)}</select>`;
   return `<form id="sf" class="card" autocomplete="off">
     <h2>${isNew ? (arg.prefill ? 'Admit transferred student' : 'New admission') : esc(s.name)}</h2>
-    ${left ? `<div class="msg w">Left on ${esc(s.left_date)} — ${esc(s.left_reason)}${s.left_detail ? ' (' + esc(s.left_detail) + ')' : ''}${s.slc_no ? ' · SLC No. ' + esc(s.slc_no) : ''}. Record is read-only.</div>` : ''}
+    ${left ? `<div class="msg w">Left on ${esc(dmy(s.left_date))} — ${esc(s.left_reason)}${s.left_detail ? ' (' + esc(s.left_detail) + ')' : ''}${s.slc_no ? ' · SLC No. ' + esc(s.slc_no) : ''}. Record is read-only.</div>` : ''}
     <fieldset ${left ? 'disabled' : ''}>
     <h3>Admission</h3>
     <div class="row"><div>${f('adm_no', 'Admission No. *', isNew ? '' : 'readonly')}<small class="muted">${isNew ? 'Continues the school register' : ''}</small></div><div>${f('adm_date', 'Date of admission *', 'type="date"')}</div></div>
@@ -180,7 +180,7 @@ BIND.withdraw = arg => {
 };
 
 V.sleft = () => { const l = ((REG.get() || {}).left || []).slice().sort((a, b) => b.left_date < a.left_date ? -1 : 1);
-  return `<div class="card"><h2>Students who left</h2>${l.length ? `<div class="list">${l.map(s => `<div class="it tap" onclick="go('student',{mode:'edit',adm_no:'${esc(s.adm_no)}'})"><div class="grow"><b>${esc(s.name)}</b> <span class="muted">s/o ${esc(s.father_name)}</span><div class="sub">Adm. ${esc(s.adm_no)} · left class ${esc(s.left_class || s.class)} on ${esc(s.left_date)} · ${esc(s.left_reason)}${s.left_detail ? ' (' + esc(s.left_detail) + ')' : ''}${s.slc_no ? ' · SLC ' + esc(s.slc_no) : ''}</div></div><span class="chev">›</span></div>`).join('')}</div>` : '<p class="muted">None recorded.</p>'}</div>`; };
+  return `<div class="card"><h2>Students who left</h2>${l.length ? `<div class="list">${l.map(s => `<div class="it tap" onclick="go('student',{mode:'edit',adm_no:'${esc(s.adm_no)}'})"><div class="grow"><b>${esc(s.name)}</b> <span class="muted">s/o ${esc(s.father_name)}</span><div class="sub">Adm. ${esc(s.adm_no)} · left class ${esc(s.left_class || s.class)} on ${esc(dmy(s.left_date))} · ${esc(s.left_reason)}${s.left_detail ? ' (' + esc(s.left_detail) + ')' : ''}${s.slc_no ? ' · SLC ' + esc(s.slc_no) : ''}</div></div><span class="chev">›</span></div>`).join('')}</div>` : '<p class="muted">None recorded.</p>'}</div>`; };
 
 /* ---------- receive by SLC ---------- */
 V.slc = () => `<div class="card"><h2>Receive a student</h2><p class="muted">For a child coming from another government school in the district that uses this register. Enter that school and the leaving certificate number; the record is copied and only the class and admission number are needed.</p>
@@ -258,11 +258,11 @@ const STU = {
 /* ---------- printable admission form / record ---------- */
 V.sprint = arg => {
   const i = inst(); const s = arg.blank ? {} : (REG.students().find(x => x.adm_no === arg.adm_no) || {});
-  const v = k => esc(s[k] || ''); const tick = (on, l) => `<span><i class="${on ? 'on' : ''}"></i>${l}</span>`;
+  const v = k => esc(dmy(s[k] || '')); const tick = (on, l) => `<span><i class="${on ? 'on' : ''}"></i>${l}</span>`;
   return `<div class="noprint card"><button class="btn" onclick="window.print()">Print</button> <span class="muted">A4 portrait. ${arg.blank ? 'Blank form for parents.' : 'Record as entered in the register.'}</span></div>
   <section class="page form pf">
     <div class="lh"><div class="seal">AJK<br>E&amp;SE</div><div class="c"><div class="gov">Azad Government of the State of Jammu &amp; Kashmir · Elementary &amp; Secondary Education Department</div><h1>${esc(i.name)}</h1><div class="sub">EMIS ${esc(i.emis)}${i.halqa ? ' · ' + esc(i.halqa) : ''}</div></div><div class="seal" style="border-radius:2mm;font-size:8pt">Photo</div></div>
-    <div class="doc"><h2>ADMISSION FORM <span class="ur" style="font-weight:700">داخلہ فارم</span></h2><div class="ex">Admission No. <b>${v('adm_no') || '________'}</b> · Date of admission <b>${v('adm_date') || '________'}</b></div></div>
+    <div class="doc"><h2>ADMISSION FORM <span class="ur" style="font-weight:700">داخلہ فارم</span></h2><div class="ex">Admission No. <b>${v('adm_no') || '________'}</b> · Date of admission <b>${v('adm_date') || '__-__-____'}</b></div></div>
     <div class="sec"><span>1. Student</span><span class="ur">طالب علم کے کوائف</span></div>
     <div class="row c2"><div class="f"><span>Name (English)</span><b>${v('name')}</b></div><div class="f"><span class="ur">نام (اردو)</span><b class="ur">${v('name_ur')}</b></div></div>
     <div class="row c2"><div class="f"><span>Father's name (English)</span><b>${v('father_name')}</b></div><div class="f"><span class="ur">والد کا نام (اردو)</span><b class="ur">${v('father_name_ur')}</b></div></div>
@@ -285,7 +285,7 @@ V.sprint = arg => {
     <div class="note">I certify that the date of birth and other particulars given above are correct. I undertake that my child will follow the rules of the school. I consent to the school keeping my child's record in its register, including the digital register of the District Education Office, for school and departmental purposes only.</div>
     <div class="note ur" style="font-size:11pt">میں تصدیق کرتا/کرتی ہوں کہ درج بالا کوائف درست ہیں۔ میں سکول کے قواعد کی پابندی کا اقرار کرتا/کرتی ہوں اور سکول کو اپنے بچے کا ریکارڈ ضلعی ڈیجیٹل رجسٹر میں محفوظ رکھنے کی اجازت دیتا/دیتی ہوں۔</div>
     <div class="sig"><div>Signature / thumb of parent</div><div>Date</div><div>Head of institution</div></div>
-    <div class="foot"><span>Entered in the admission register and the District School Data System${s.created_by ? ' by ' + esc(s.created_by) + ' on ' + esc((s.created_on || '').slice(0, 10)) : ''}</span><span>${esc(i.name)}</span></div>
+    <div class="foot"><span>Entered in the admission register and the District School Data System${s.created_by ? ' by ' + esc(s.created_by) + ' on ' + esc(dmy((s.created_on || '').slice(0, 10))) : ''}</span><span>${esc(i.name)}</span></div>
   </section>`;
 };
 BIND.sprint = () => { };

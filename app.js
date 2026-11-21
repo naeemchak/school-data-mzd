@@ -14,7 +14,36 @@ const S = { operator: LS.get('operator', ''), token: LS.get('token'), user: LS.g
 const $ = s => document.querySelector(s);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };   // local date, not UTC
+/* ---------- dates: typed dd-mm-yyyy (AJK convention), stored as yyyy-mm-dd ---------- */
+const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** show any value that starts with yyyy-mm-dd as dd-mm-yyyy (keeps a time part if present) */
+const dmy = v => { v = v == null ? '' : String(v); const m = /^(\d{4})-(\d{2})-(\d{2})(.*)$/.exec(v); return m ? `${m[3]}-${m[2]}-${m[1]}${m[4]}` : v; };
+const DT = {
+  toIso(t) { const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(t); if (!m) return ''; const d = +m[1], mo = +m[2], y = +m[3];
+    const x = new Date(Date.UTC(y, mo - 1, d)); return x.getUTCMonth() === mo - 1 && x.getUTCDate() === d && y >= 1900 && y <= 2100 ? `${m[3]}-${m[2]}-${m[1]}` : ''; },
+  words(iso) { return iso ? `${Number(iso.slice(8, 10))} ${MONTHS_FULL[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}` : ''; },
+  /** replace a native date picker with a typed box: 8 digits, dashes appear by themselves, the date is read back in words */
+  enhance(el) {
+    if (el.dataset.dt) return; el.dataset.dt = '1';
+    const vis = document.createElement('input');
+    vis.className = 'dtin'; vis.inputMode = 'numeric'; vis.placeholder = 'dd-mm-yyyy'; vis.autocomplete = 'off'; vis.maxLength = 10;
+    vis.disabled = el.disabled; vis.readOnly = el.readOnly; vis.value = dmy(el.value);
+    const w = document.createElement('small'); w.className = 'dtw';
+    el.type = 'hidden'; el.after(vis, w);
+    const show = () => { const t = vis.value, iso = DT.toIso(t);
+      w.textContent = iso ? DT.words(iso) : t.length === 10 ? 'Not a valid date' : ''; w.classList.toggle('bad', t.length === 10 && !iso); };
+    vis.addEventListener('input', () => {
+      const g = vis.value.replace(/\D/g, '').slice(0, 8);
+      vis.value = g.length > 4 ? `${g.slice(0, 2)}-${g.slice(2, 4)}-${g.slice(4)}` : g.length > 2 ? `${g.slice(0, 2)}-${g.slice(2)}` : g;
+      const iso = DT.toIso(vis.value); if (el.value !== iso) { el.value = iso; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+      show();
+    });
+    show();
+  },
+  scan(root) { (root || document).querySelectorAll('input[type="date"]').forEach(DT.enhance); }
+};
+new MutationObserver(() => DT.scan(document.getElementById('app'))).observe(document.getElementById('app'), { childList: true, subtree: true });
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthLabel = m => m ? MONTHS[Number(m.slice(5)) - 1] + ' ' + m.slice(0, 4) : '';
@@ -52,7 +81,7 @@ async function sync() {
   if (syncing || !ob.length || !navigator.onLine || !S.token) { showSync(); return; }
   syncing = true; showSync();
   try {
-    const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'batch', token: S.token, operator: S.operator, items: ob.slice(0, 25) }) });
+    const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'batch', token: S.token, operator: S.operator, sent_ms: Date.now(), items: ob.slice(0, 25) }) });
     const j = await r.json();
     if (j.auth) { signOut(true); return; }
     if (!j.ok) throw new Error(j.error);
@@ -83,7 +112,7 @@ setInterval(sync, 60000);
 /* ---------------- data ---------------- */
 const instKey = e => 'inst_' + e;
 const D = () => LS.get(instKey(S.emis), null);
-const saveD = d => { if (!d.register) { const old = D(); if (old && old.register) d.register = old.register; }   // the student register lives beside the institution record
+const saveD = d => { const old = (!d.register || !d.att) ? D() : null; if (old && !d.register && old.register) d.register = old.register; if (old && !d.att && old.att) d.att = old.att;   // the student register lives beside the institution record
   LS.set(instKey(S.emis), d); };
 async function refreshInst(silent) {
   if (!S.emis || !navigator.onLine) return;
@@ -125,7 +154,7 @@ function render() {
   NAV.close();
   if (!S.token) { document.body.classList.remove('wide', 'nav'); $('#side').hidden = true; $('#menu').hidden = true; $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
   document.body.classList.add('nav'); $('#side').hidden = false; $('#menu').hidden = false;
-  document.body.classList.toggle('wide', ['home', 'reports', 'institutions', 'search', 'review', 'approvals'].includes(S.view));
+  document.body.classList.toggle('wide', ['home', 'reports', 'institutions', 'search', 'review', 'approvals', 'attmonth'].includes(S.view));
   $('#back').hidden = !S.stack.length;
   const i = inst();
   const TOP = { building: '', institutions: 'Institutions', search: 'Staff search', approvals: 'Approvals', review: 'Review', reports: 'Reports', settings: 'Settings', about: 'About' };
@@ -211,6 +240,7 @@ V.home = () => {
     ${isOffice ? '' : `<button class="tile" onclick="go('enrol')"><b>Enrolment</b><small>Monthly, class-wise</small><div class="ur">داخلہ</div></button>
     <button class="tile" onclick="go('fees')"><b>Fees</b><small>${primaryFees ? 'Entered by AEO' : 'Collection and deposits'}</small><div class="ur">فیس</div></button>
     <button class="tile" onclick="go('results')"><b>Results</b><small>Term, annual, monthly tests</small><div class="ur">نتائج</div></button>
+    <button class="tile tile-att" onclick="go('attendance')"><b>Attendance</b><small>Teachers and students, today</small><div class="ur">حاضری</div></button>
     <button class="tile" onclick="go('students')"><b>Students</b><small>${d && d.register && d.register.students ? d.register.students.length + ' enrolled in the register' : 'Admission register'}</small><div class="ur">طلبہ</div></button>
     <button class="tile" onclick="go('building')"><b>Building</b><small>${d && d.facilities ? 'Facilities profile · ' + (d.facilities.status === 'Accepted' ? 'recorded' : String(d.facilities.status).toLowerCase()) : 'Facilities profile not entered yet'}</small><div class="ur">عمارت</div></button>`}
     ${officer ? `<button class="tile" onclick="go('approvals')"><b>Approvals</b><small>${(S.boot && S.boot.pending) || 0} waiting</small><div class="ur">منظوری</div></button>` : ''}
@@ -225,7 +255,7 @@ V.posts = () => {
   const d = D(); if (!d) return noData();
   const filled = {};
   if (d.ddoFilled) Object.assign(filled, d.ddoFilled);
-  else d.employees.forEach(e => { if (e.post_id) filled[e.post_id] = (filled[e.post_id] || 0) + 1; });
+  else d.employees.forEach(e => { if (e.post_id && e.placement !== 'Current charge basis') filled[e.post_id] = (filled[e.post_id] || 0) + 1; });
   const other = {}, charge = {};
   d.employees.forEach(e => {
     if (outOfTitle(e)) other[e.post_id] = (other[e.post_id] || 0) + 1;
@@ -238,9 +268,34 @@ V.posts = () => {
   }).join('');
   return `<div class="card"><h2>Sanctioned and filled posts</h2>
   <p class="muted">Sanctioned posts: budget 2026-27 (DDO ${esc(d.inst.ddo)}). Filled posts are counted from the staff register, so this replaces the monthly vacancy return.
-  ${d.ddoFilled ? 'Primary-school posts are sanctioned at AEO-circle level; figures are for the whole circle.' : ''}</p>
+  ${d.inst.level === 'Primary' ? 'Primary-school posts are sanctioned at AEO-circle level; figures are for the whole circle.' : ''} Posts held on current charge are counted as vacant.</p>
+  ${postsSummary(d, filled)}
   <div class="scroll"><table><tr><th>Designation</th><th>BPS</th><th class="num">Sanct.</th><th class="num">Filled</th><th class="num">Vacant</th></tr>${rows}</table></div></div>`;
 };
+/** totals for the posts screen: posts by teaching / non-teaching, staff by employment status, posts held by another title */
+const STATUS_ORDER = ['Regular', 'Temporary', 'Ad hoc', 'Contract', 'Stopgap', 'Daily wages'];
+const TEACH_RE = /teacher|specialist|instructor|headmaster|principal|qari|mualim|moalim|lecturer/i;
+function postsSummary(d, filled) {
+  const g = { t: { s: 0, f: 0 }, n: { s: 0, f: 0 } };
+  d.posts.forEach(p => { const k = TEACH_RE.test(p.designation) ? 't' : 'n'; g[k].s += Number(p.sanctioned || 0); g[k].f += Math.min(Number(p.sanctioned || 0), filled[p.post_id] || 0); });
+  const ex = d.posts.reduce((a, p) => a + Math.max(0, (filled[p.post_id] || 0) - Number(p.sanctioned || 0)), 0);
+  const S2 = d.ddoStaff || (() => { const o = { teaching: {}, nonTeaching: {}, basis: { officiating: 0, currentCharge: 0, sameScale: 0, unstated: 0 }, additionalCharge: 0 };
+    d.employees.forEach(e => { const x = TEACH_RE.test(e.own_designation || e.designation) ? o.teaching : o.nonTeaching; x[e.service_status || 'Regular'] = (x[e.service_status || 'Regular'] || 0) + 1; if (e.charge_type) o.additionalCharge++;
+      if (outOfTitle(e)) { if (e.placement === 'Officiating basis') o.basis.officiating++; else if (e.placement === 'Current charge basis') o.basis.currentCharge++; else if (BASES.includes(e.placement)) o.basis.sameScale++; else o.basis.unstated++; } }); return o; })();
+  const sts = STATUS_ORDER.concat(Object.keys(Object.assign({}, S2.teaching, S2.nonTeaching)).filter(k => !STATUS_ORDER.includes(k))).filter(k => (S2.teaching[k] || 0) + (S2.nonTeaching[k] || 0));
+  const sum = o => Object.values(o).reduce((a, b) => a + b, 0);
+  const B = S2.basis, row = (l, a, b, strong) => `<tr${strong ? ' class="tot"' : ''}><td>${l}</td><td class="num">${a}</td><td class="num">${b}</td><td class="num">${a + b}</td></tr>`;
+  return `<div class="psum">
+    <table class="ptab"><tr><th>Posts</th><th class="num">Teaching</th><th class="num">Non-teaching</th><th class="num">Total</th></tr>
+      ${row('Sanctioned', g.t.s, g.n.s)}${row('Filled', g.t.f, g.n.f)}${row('Vacant', g.t.s - g.t.f, g.n.s - g.n.f, true)}</table>
+    ${sts.length ? `<table class="ptab"><tr><th>Staff by status</th><th class="num">Teaching</th><th class="num">Non-teaching</th><th class="num">Total</th></tr>
+      ${sts.map(k => row(k, S2.teaching[k] || 0, S2.nonTeaching[k] || 0)).join('')}${row('All staff', sum(S2.teaching), sum(S2.nonTeaching), true)}</table>` : ''}
+    ${B.officiating + B.currentCharge + B.sameScale + B.unstated + S2.additionalCharge + ex ? `<div class="pchips">
+      ${B.officiating ? `<span class="pill">${B.officiating} officiating</span>` : ''}${B.currentCharge ? `<span class="pill">${B.currentCharge} on current charge (post shown vacant)</span>` : ''}
+      ${B.sameScale ? `<span class="pill">${B.sameScale} against another post of the same scale</span>` : ''}${B.unstated ? `<span class="pill bad">${B.unstated} basis not stated</span>` : ''}
+      ${S2.additionalCharge ? `<span class="pill">${S2.additionalCharge} holding additional charge</span>` : ''}${ex ? `<span class="pill bad">${ex} in excess of sanctioned posts: check</span>` : ''}</div>` : ''}
+  </div>`;
+}
 const noData = () => '<div class="card"><div class="msg w">Not downloaded yet. Connect to the internet and open again.</div></div>';
 
 /* ---------- staff ---------- */
@@ -254,7 +309,7 @@ V.staff = () => {
     <span class="badge ${e.verified === 'Verified' ? 'o' : 'w'}">${e.verified === 'Verified' ? 'Verified' : 'Unverified'}</span></div>`).join('');
   // requests from other institutions for this institution's staff: confirm relieving or reject
   const out = (d.transfersOut || []).filter(t => t.status === 'Awaiting outgoing institution').map(t =>
-    `<div class="it"><div class="grow"><b>${esc(t.name)}</b> · ${esc(t.designation)}<div class="sub">Requested by ${esc(t.to_name)} · order ${esc(t.order_no)}${t.order_date ? ' dt ' + esc(t.order_date) : ''} · joined there ${esc(t.joined_on)}</div>
+    `<div class="it"><div class="grow"><b>${esc(t.name)}</b> · ${esc(t.designation)}<div class="sub">Requested by ${esc(t.to_name)} · order ${esc(t.order_no)}${t.order_date ? ' dt ' + esc(dmy(t.order_date)) : ''} · joined there ${esc(dmy(t.joined_on))}</div>
      <button class="btn" onclick="tresp('${esc(t.id)}','confirm')">Confirm relieving</button><button class="btn warn" onclick="tresp('${esc(t.id)}','reject')">Reject</button></div></div>`).join('');
   // this institution's own requests
   const inc = (d.transfersIn || []).filter(t => t.status !== 'Completed').slice(-10).reverse().map(t =>
@@ -593,13 +648,13 @@ BIND.receive = () => {
       const f = j.found[0], e = f.employee, d = D();
       const posts = d.posts.slice().sort((a, b) => b.bps - a.bps).map(p => [p.post_id, `${p.designation} (BPS-${p.bps})`]);
       $('#rr').innerHTML = `<div class="hist"><b>${esc(e.name)}</b> s/o ${esc(e.father_name)}<div class="sub">${esc(e.own_designation || e.designation)} (own title) · BPS ${esc(e.own_bps || e.post_bps)} · now at ${esc(f.station_name)}</div>
-        <div class="sub">Born ${esc(e.dob)} · first appointed ${esc(e.first_appt_date)} as ${esc(e.first_designation)}</div>
-        <div class="sub">Promotions: ${f.promotions.map(p => esc(p.to_designation) + ' (' + esc(p.date) + ')').join('; ') || 'none'}</div>
-        <div class="sub">Postings: ${f.postings.map(p => esc(p.station_name) + ' ' + esc(p.from_date) + '–' + esc(p.to_date || 'now')).join('; ')}</div></div>
+        <div class="sub">Born ${esc(dmy(e.dob))} · first appointed ${esc(dmy(e.first_appt_date))} as ${esc(e.first_designation)}</div>
+        <div class="sub">Promotions: ${f.promotions.map(p => esc(p.to_designation) + ' (' + esc(dmy(p.date)) + ')').join('; ') || 'none'}</div>
+        <div class="sub">Postings: ${f.postings.map(p => esc(p.station_name) + ' ' + esc(dmy(p.from_date)) + '–' + esc(dmy(p.to_date) || 'now')).join('; ')}</div></div>
         ${e.emis === S.emis ? '<div class="msg o">Already at this institution.</div>' : `<div id="cf">
         <label>Post occupied at this institution *</label><select name="post_id">${opts(posts, '', '— choose —')}</select>
         <div id="cpl" hidden><div class="msg w">This post has a different job title from the employee's own (${esc(e.own_designation || e.designation)}).</div>
-        <label>How placed against this post</label><select name="placement">${opts(PLACEMENTS.slice(1))}</select></div>
+        <label>Basis of holding the post *</label><select name="placement">${opts(BASES, '', '— choose —')}</select></div>
         <div class="row"><div><label>Transfer order No. *</label><input name="order_no"></div><div><label>Order date</label><input type="date" name="order_date"></div></div>
         <label>Joined here on *</label><input type="date" name="joined_on" value="${today()}">
         <button class="btn full" id="cs">Send transfer request</button>
@@ -612,6 +667,8 @@ BIND.receive = () => {
         const c = formData($('#cf'));
         if (!c.post_id || !c.order_no || !c.joined_on) return toast('Post, order No. and joining date are required');
         const p = d.posts.find(x => x.post_id === c.post_id);
+        if (normT(p.designation) === normT(e.own_designation || e.designation)) c.placement = 'Against own post';
+        else if (!BASES.includes(c.placement)) return toast('Say on what basis the employee will hold this post (current charge, officiating, or same scale)');
         queue('claimEmployee', Object.assign(c, { cnic: e.cnic, to_emis: S.emis, designation: p.designation }), 'Transfer request: ' + e.name);
         d.transfersIn = (d.transfersIn || []).concat([{ name: e.name, from_name: f.station_name, status: 'Request sent to outgoing institution and officer' }]);
         toast('Request sent. The record moves here after the outgoing institution and both officers approve.');
@@ -662,6 +719,10 @@ BIND.enrol = () => {
 
 /* ---------- fees ---------- */
 const HEADS = [['tuition', 'Tuition fee'], ['admission', 'Admission fee'], ['annual_fund', 'School annual fund'], ['scout_fund', 'Scout fund']];
+/** first month (YYYY-MM) of the school year that month m belongs to; the year begins in March (Scheme of Studies) */
+function feeSession(m) { const st = Number(S.boot.meta.sessionStart || 3), y = Number(m.slice(0, 4)); return `${Number(m.slice(5, 7)) >= st ? y : y - 1}-${String(st).padStart(2, '0')}`; }
+/** same rule as the server (expectedFees_): tuition from all enrolled monthly; admission fee from new admissions;
+    annual fund from the whole school in the year's first month, and from children admitted later with their admission */
 function expected(d, m) {
   const meta = S.boot.meta, rows = d.enrolment.filter(r => r.month === m);
   const ex = { tuition: 0, admission: 0, annual_fund: 0, scout_fund: 0 };
@@ -669,7 +730,7 @@ function expected(d, m) {
     const i = CLASSES.indexOf(r.class), lv = i <= 5 ? 'Primary' : i <= 8 ? 'Middle' : i <= 10 ? 'High' : 'Inter', f = meta.fees[lv];
     const n = Number(r.boys || 0) + Number(r.girls || 0), a = Number(r.new_admissions || 0);
     ex.tuition += n * f.tuition; ex.admission += a * f.admission;
-    ex.annual_fund += (m.slice(5) === meta.sessionStart ? n : a) * f.annual_fund;
+    ex.annual_fund += (m === feeSession(m) ? n : a) * f.annual_fund;
     if (i >= 3) ex.scout_fund += n * (i >= 11 ? meta.scout.inter : meta.scout.low);
   });
   return { ex, has: rows.length > 0 };
@@ -678,31 +739,49 @@ V.fees = () => {
   const d = D(); if (!d) return noData();
   if (d.inst.level === 'Primary' && role() === 'SCHOOL') return '<div class="card"><h2>Fees</h2><p>Primary-school fees are collected, deposited and entered by the AEO.</p></div>';
   const months = recentMonths(3);
-  const deps = d.deposits.slice().reverse().map(x => `<div class="it"><div class="grow"><b>Rs ${esc(x.amount)}</b> · ${esc(x.account)}<div class="sub">Challan ${esc(x.challan_no)}, ${esc(x.challan_date)} · for ${monthLabel(x.month)} · ${esc(x.status)}</div></div></div>`).join('');
+  const deps = d.deposits.slice().reverse().map(x => `<div class="it"><div class="grow"><b>Rs ${esc(x.amount)}</b> · ${esc(x.account)}<div class="sub">Challan ${esc(x.challan_no)}, ${esc(dmy(x.challan_date))} · for ${monthLabel(x.month)} · ${esc(x.status)}</div></div></div>`).join('');
   return `<div class="card" id="ff"><h2>Fee collection</h2><div class="ur">فیس کی وصولی</div>
   <label>Month</label><select id="fm">${opts(months.map(m => [m, monthLabel(m)]), months[0])}</select>
   <div id="fx"></div><button class="btn full" id="fs">Save collection</button></div>
+  <div class="card" id="fo"></div>
   <div class="card"><h2>Deposits (challans)</h2><div id="fd"></div><button class="btn" onclick="go('deposit')">+ Add challan</button><div class="list">${deps || '<p class="muted">No deposit recorded.</p>'}</div></div>`;
 };
 BIND.fees = () => {
   const d = D(); if (!$('#fm')) return;
   const draw = () => {
     const m = $('#fm').value, { ex, has } = expected(d, m), saved = d.fees.filter(r => r.month === m);
-    const col = h => { const r = saved.find(x => x.fee_head === h); return r ? r.collected : ex[h]; };
+    const col = h => { const r = saved.find(x => x.fee_head === h); return r ? r.collected : ''; };   // start empty: the head types what was actually collected
     const sc = Number(col('scout_fund'));
     $('#fx').innerHTML = (has ? '' : `<div class="msg w">Enrolment for ${monthLabel(m)} is not entered yet; expected amounts need it. <a href="#" onclick="go('enrol');return false">Enter enrolment</a></div>`) +
       `<table><tr><th>Fee head</th><th class="num">Expected</th><th>Collected (Rs)</th></tr>${HEADS.map(([h, t]) =>
-        `<tr><td>${t}</td><td class="num">${ex[h]}</td><td><input data-h="${h}" value="${esc(col(h))}" inputmode="numeric"></td></tr>`).join('')}</table>
-      <label>Reason if collection is less than expected</label><input id="frm" value="${esc((saved[0] || {}).remark || '')}">
+        `<tr><td>${t}</td><td class="num">${ex[h]}</td><td><input data-h="${h}" value="${esc(col(h))}" inputmode="numeric" placeholder="0"></td></tr>`).join('')}</table>
+      ${m === feeSession(m) ? `<p class="muted">${monthLabel(m)} is the first month of the school year: annual fund is due from every enrolled student.</p>` : `<p class="muted">Annual fund this month: only from children newly admitted (the whole school pays it in ${monthLabel(feeSession(m))}).</p>`}
+      <label>Reason if collection differs from expected</label><input id="frm" value="${esc((saved[0] || {}).remark || '')}">
       <p class="muted">Expected = enrolment × notified rates (no exemptions). Deposit due: A/C 101 Rs ${Number(col('tuition')) + Number(col('admission')) + Number(col('annual_fund'))};
       scout fund: school Rs ${Math.round(sc * .4)}, DEO / District Scouts Commissioner Rs ${Math.round(sc * .1)}, provincial Rs ${Math.round(sc * .5)}.</p>`;
   };
-  $('#fm').onchange = draw; draw();
+  const opening = () => {   // one-time: annual fund collected this school year before the app
+    const cur = feeSession(today().slice(0, 7)), o = d.feeOpening, done = o && o.session === cur;
+    const rec = (d.feesSession || []).reduce((s, r) => s + Number(r.collected || 0), 0);
+    $('#fo').innerHTML = `<h3>Annual fund collected before the app</h3>
+      <p class="muted">For ${monthLabel(cur)}–${monthLabel(today().slice(0, 7))}: enter once the school annual fund already collected this school year before fees were entered in the app, so the yearly check is correct.${rec ? ` Recorded in the app so far this year: Rs ${rec}.` : ''}</p>
+      <div class="row"><div><label>Amount (Rs)</label><input id="foa" inputmode="numeric" value="${done ? esc(o.annual_fund) : ''}" placeholder="0"></div><div><label>Remarks</label><input id="for" value="${done ? esc(o.remark) : ''}"></div></div>
+      <button class="btn alt" id="fob">${done ? 'Update opening amount' : 'Save opening amount'}</button>${done ? ` <span class="muted">Recorded by ${esc(o.entered_by)}</span>` : ''}`;
+    $('#fob').onclick = () => {
+      const v = $('#foa').value.trim(); if (v === '' || !/^\d+$/.test(v)) return toast('Enter the amount in rupees (0 if none)');
+      queue('saveFeeOpening', { emis: S.emis, session: cur, annual_fund: Number(v), remark: $('#for').value.trim() }, 'Annual fund opening ' + monthLabel(cur));
+      d.feeOpening = { session: cur, annual_fund: Number(v), remark: $('#for').value.trim(), entered_by: S.operator }; saveD(d); toast('Saved'); opening();
+    };
+  };
+  $('#fm').onchange = draw; draw(); opening();
   $('#fs').onclick = () => {
-    const m = $('#fm').value, rows = HEADS.map(([h]) => ({ fee_head: h, collected: Number($(`[data-h="${h}"]`).value) || 0 }));
+    const m = $('#fm').value;
+    if (HEADS.some(([h]) => $(`[data-h="${h}"]`).value.trim() === '')) return toast('Enter the amount collected under every head (0 if nothing was collected)');
+    if (HEADS.some(([h]) => !/^\d+$/.test($(`[data-h="${h}"]`).value.trim()))) return toast('Amounts must be whole rupees');
+    const rows = HEADS.map(([h]) => ({ fee_head: h, collected: Number($(`[data-h="${h}"]`).value) }));
     const { ex } = expected(d, m);
-    const short = rows.some(r => r.collected < ex[r.fee_head]);
-    if (short && !$('#frm').value.trim()) return toast('Collection is less than expected: please give the reason');
+    const off = rows.some(r => r.collected !== ex[r.fee_head]);
+    if (off && !$('#frm').value.trim()) return toast('Collection differs from expected: please give the reason');
     queue('saveFees', { emis: S.emis, month: m, rows, remark: $('#frm').value.trim() }, 'Fees ' + monthLabel(m));
     d.fees = d.fees.filter(r => r.month !== m).concat(rows.map(r => Object.assign({ month: m, remark: $('#frm').value.trim() }, r)));
     saveD(d); toast('Saved');
@@ -808,7 +887,7 @@ BIND.approvals = async () => {
   S.pendingItems = items;
   const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer', Facilities: 'Building' };
   $('#al').innerHTML = items.length ? `<p class="muted">Tap an item to see the full record and decide.</p>` + items.map((x, k) =>
-    `<div class="it tap" onclick="openReview(${k})"><div class="grow"><b>${esc(x.inst)}</b> <span class="pill">${KIND[x.sheet] || x.sheet}</span><div class="sub">${esc(x.what)}</div><div class="sub">${esc(x.submitted_on)} · ${esc(x.submitted_by)}</div></div><span class="chev">›</span></div>`).join('')
+    `<div class="it tap" onclick="openReview(${k})"><div class="grow"><b>${esc(x.inst)}</b> <span class="pill">${KIND[x.sheet] || x.sheet}</span><div class="sub">${esc(x.what)}</div><div class="sub">${esc(dmy(x.submitted_on))} · ${esc(x.submitted_by)}</div></div><span class="chev">›</span></div>`).join('')
     : '<p class="muted">Nothing is waiting.</p>';
 };
 window.openReview = k => { const x = S.pendingItems[k]; go('review', x); };
@@ -875,6 +954,7 @@ const ICON = {
   results: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18l5-6 4 3 7-9"/><path d="M20 6v4h-4"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   building: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-5h6v5M9 11h2M13 11h2"/></svg>',
+  attendance: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M8.5 15l2.2 2.2 4.8-4.7"/></svg>',
   students: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="7" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0M3 11h3M18 11h3"/></svg>',
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>'
 };
@@ -897,6 +977,7 @@ const NAV = (() => {
         { id: 'istaff', label: 'Staff', icon: 'staff', on: S.view === 'staff', go: () => jump('staff') },
         { id: 'iposts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
         ...(isOffice ? [] : [
+          { id: 'iattendance', label: 'Attendance', icon: 'attendance', on: ['attendance', 'tatt', 'satt', 'attmonth'].includes(S.view), go: () => jump('attendance') },
           { id: 'istudents', label: 'Students', icon: 'students', on: ['students', 'student', 'sleft', 'sprint'].includes(S.view), go: () => jump('students') },
           { id: 'ienrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
           { id: 'ifees', label: 'Fees', icon: 'fees', on: S.view === 'fees', go: () => jump('fees') },
@@ -911,6 +992,7 @@ const NAV = (() => {
       { id: 'home', label: 'My school', icon: 'home', on: S.view === 'home', go: () => jump('home') },
       { id: 'staff', label: 'Staff', icon: 'staff', on: S.view === 'staff' || S.view === 'emp' || S.view === 'receive', go: () => jump('staff') },
       { id: 'posts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
+      { id: 'attendance', label: 'Attendance', icon: 'attendance', on: ['attendance', 'tatt', 'satt', 'attmonth'].includes(S.view), go: () => jump('attendance') },
       { id: 'students', label: 'Students', icon: 'students', on: ['students', 'student', 'withdraw', 'slc', 'simport', 'sleft', 'sprint'].includes(S.view), go: () => jump('students') },
       { id: 'enrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
       { id: 'fees', label: primary ? 'Fees (by AEO)' : 'Fees', icon: 'fees', on: S.view === 'fees' || S.view === 'deposit', go: () => jump('fees') },
@@ -1071,7 +1153,7 @@ V.reports = () => `<div class="card noprint"><h2>Reports</h2><div class="seg" id
   <div class="rwrap"><table class="rtable" id="rt"></table></div><p class="muted" id="rcount"></p></div>`;
 const REP = { cur: null,
   csv() { if (!REP.cur) return; const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-    const txt = [REP.cur.head].concat(REP.cur.rows).map(r => r.map(q).join(',')).join('\n');
+    const txt = [REP.cur.head].concat(REP.cur.rows.map(r => r.map(dmy))).map(r => r.map(q).join(',')).join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + txt], { type: 'text/csv' })); a.download = (REP.cur.title + ' ' + today()).replace(/[^\w\- ]+/g, '') + '.csv'; a.click(); } };
 BIND.reports = async () => {
   let list = LS.get('reports_list', null);
@@ -1091,7 +1173,11 @@ BIND.reports = async () => {
     $('#rnote').textContent = r.note + (navigator.onLine ? '' : ` · offline copy from ${r.at}`);
     $('#rtitle').textContent = r.title;
     const num = v => typeof v === 'number';
-    $('#rt').innerHTML = `<thead><tr>${r.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${r.rows.slice(0, 1500).map(row => `<tr>${row.map(v => `<td class="${num(v) ? 'num' : ''}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+    // a total row for columns that are counts or rupees
+    const SUMMABLE = /sanctioned|filled|vacant|excess|of filled|held on current|expected|collected|deposited|short|not deposited|students|enrolled|boys|girls|admitted|left last|dropouts|orphans|disability|with b-form|annual fund|recorded|difference|opening|^ece$|^[ivx]+$|days|present|absent|late|leave|early|marked/i;
+    const tot = r.head.map((h, j) => SUMMABLE.test(h) && !/bps|%|rate|reason|halqa|level|designation/i.test(h) && r.rows.some(x => typeof x[j] === 'number') ? r.rows.reduce((a, x) => a + (typeof x[j] === 'number' ? x[j] : 0), 0) : null);
+    const totRow = r.rows.length > 1 && tot.some(v => v !== null) ? `<tfoot><tr>${tot.map((v, j) => `<td class="num">${j === 0 ? 'Total' : v === null ? '' : Math.round(v)}</td>`).join('')}</tr></tfoot>` : '';
+    $('#rt').innerHTML = `<thead><tr>${r.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${r.rows.slice(0, 1500).map(row => `<tr>${row.map(v => `<td class="${num(v) ? 'num' : ''}">${esc(dmy(v))}</td>`).join('')}</tr>`).join('')}</tbody>${totRow}`;
     $('#rcount').textContent = `${r.count} rows${r.rows.length > 1500 ? ' (first 1,500 shown; download CSV for all)' : ''}${r.truncated ? ' · narrow the filters for the complete list' : ''}`;
   };
   if ($('#rh')) { $('#rh').onchange = draw; $('#rl').onchange = draw; }
@@ -1100,7 +1186,7 @@ BIND.reports = async () => {
 function now_() { return new Date().toISOString().slice(0, 16).replace('T', ' '); }
 
 /* ---------- review one approval item ---------- */
-V.review = x => `<div class="card"><h2>${esc(x.inst)}</h2><p class="muted">${esc(x.what)}<br>Submitted ${esc(x.submitted_on)} by ${esc(x.submitted_by)}</p><div id="rv"><p class="muted">${navigator.onLine ? 'Loading the record…' : 'Reviewing needs internet.'}</p></div></div>`;
+V.review = x => `<div class="card"><h2>${esc(x.inst)}</h2><p class="muted">${esc(x.what)}<br>Submitted ${esc(dmy(x.submitted_on))} by ${esc(x.submitted_by)}</p><div id="rv"><p class="muted">${navigator.onLine ? 'Loading the record…' : 'Reviewing needs internet.'}</p></div></div>`;
 BIND.review = async x => {
   if (!navigator.onLine) return;
   if (x.sheet === 'Employees') {        // open the full employee form with decision buttons
@@ -1124,7 +1210,7 @@ BIND.review = async x => {
       + `<h3>Deposits that month</h3>` + (it.deposits.length ? tbl(['Account', 'Challan', 'Date', 'Amount'], it.deposits.map(d => [d.account, d.challan_no, d.challan_date, d.amount])) : '<p class="muted">None recorded.</p>');
   } else if (x.sheet === 'FeeDeposits') {
     const d = it.rows[0];
-    html = `<div class="kv2"><b>Account</b><span>${esc(d.account)}</span><b>Challan No.</b><span>${esc(d.challan_no)}</span><b>Date</b><span>${esc(d.challan_date)}</span><b>Amount</b><span>Rs ${esc(d.amount)}</span><b>Bank</b><span>${esc(d.bank_branch)}</span><b>For month</b><span>${monthLabel(d.month)}</span><b>Remarks</b><span>${esc(d.remark)}</span></div>`;
+    html = `<div class="kv2"><b>Account</b><span>${esc(d.account)}</span><b>Challan No.</b><span>${esc(d.challan_no)}</span><b>Date</b><span>${esc(dmy(d.challan_date))}</span><b>Amount</b><span>Rs ${esc(d.amount)}</span><b>Bank</b><span>${esc(d.bank_branch)}</span><b>For month</b><span>${monthLabel(d.month)}</span><b>Remarks</b><span>${esc(d.remark)}</span></div>`;
   } else if (x.sheet === 'Results') {
     const r0 = it.rows[0]; const en = it.enrolment && it.enrolment[0];
     html = `<h3>${esc(r0.exam)}, Class ${esc(r0.class)}${r0.group ? ' ' + esc(r0.group) : ''}</h3>${en ? `<p class="muted">Enrolment in this class (${monthLabel(en.month)}): ${Number(en.boys || 0) + Number(en.girls || 0)}</p>` : ''}`
@@ -1132,13 +1218,13 @@ BIND.review = async x => {
   } else if (x.sheet === 'Transfers') {
     const t = it.transfer, e = it.employee;
     html = `<div class="kv2"><b>Employee</b><span>${esc(t.name)}, ${esc(t.designation)}</span><b>From</b><span>${esc(t.from_name)}</span><b>To</b><span>${esc(t.to_name)} · against ${esc(t.new_designation)} post${t.placement ? ' (' + esc(t.placement) + ')' : ''}</span>
-      <b>Order</b><span>${esc(t.order_no)}${t.order_date ? ' dt ' + esc(t.order_date) : ''}</span><b>Joined</b><span>${esc(t.joined_on)}</span><b>Relieved</b><span>${t.relieved_on ? esc(t.relieved_on) + ' (confirmed by ' + esc(t.outgoing_by) + ')' : '<span class="db-no">not yet confirmed by the outgoing institution</span>'}</span>
+      <b>Order</b><span>${esc(t.order_no)}${t.order_date ? ' dt ' + esc(dmy(t.order_date)) : ''}</span><b>Joined</b><span>${esc(dmy(t.joined_on))}</span><b>Relieved</b><span>${t.relieved_on ? esc(dmy(t.relieved_on)) + ' (confirmed by ' + esc(t.outgoing_by) + ')' : '<span class="db-no">not yet confirmed by the outgoing institution</span>'}</span>
       <b>Officer approvals</b><span>${t.out_approved_by ? '✓ outgoing side (' + esc(t.out_approved_by) + ')' : '… outgoing side'}<br>${t.approved_by ? '✓ receiving side (' + esc(t.approved_by) + ')' : '… receiving side'}</span></div>`
-      + (e ? `<h3>Service record</h3><div class="kv2"><b>CNIC</b><span>${esc(e.employee.cnic)}</span><b>Own title</b><span>${esc(e.employee.own_designation || e.employee.designation)} (BPS-${esc(e.employee.own_bps || e.employee.post_bps)})</span><b>First appointed</b><span>${esc(e.employee.first_appt_date)} as ${esc(e.employee.first_designation)}</span><b>Postings</b><span>${e.postings.map(p => esc(p.station_name) + ' ' + esc(p.from_date) + '–' + esc(p.to_date || 'now')).join('<br>') || '–'}</span></div>` : '');
+      + (e ? `<h3>Service record</h3><div class="kv2"><b>CNIC</b><span>${esc(e.employee.cnic)}</span><b>Own title</b><span>${esc(e.employee.own_designation || e.employee.designation)} (BPS-${esc(e.employee.own_bps || e.employee.post_bps)})</span><b>First appointed</b><span>${esc(e.employee.first_appt_date)} as ${esc(e.employee.first_designation)}</span><b>Postings</b><span>${e.postings.map(p => esc(p.station_name) + ' ' + esc(dmy(p.from_date)) + '–' + esc(dmy(p.to_date) || 'now')).join('<br>') || '–'}</span></div>` : '');
   }
   if (x.sheet === 'Facilities') {
     const f = it.rows[0];
-    html = `<p class="muted">Entered ${esc(f.submitted_on)} by ${esc(f.submitted_by)}. Verify on inspection; open the institution to correct any figure before approving.</p>` + facilitiesSummary(f);
+    html = `<p class="muted">Entered ${esc(dmy(f.submitted_on))} by ${esc(f.submitted_by)}. Verify on inspection; open the institution to correct any figure before approving.</p>` + facilitiesSummary(f);
   }
   const verb = x.sheet === 'Transfers' ? 'Reject' : 'Return';
   $('#rv').innerHTML = html + `<div class="decide"><button class="btn" style="background:var(--ok)" onclick="decide('approve')">Approve</button><button class="btn warn" onclick="decide('return')">${verb} with remarks</button><button class="btn alt" onclick="pick('${esc(x.emis)}')">Open institution</button></div>`;
