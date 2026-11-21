@@ -288,6 +288,25 @@ fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled input,fieldse
 .amt .cl{background:var(--line);opacity:.6}.amt .kA{color:#b3261e;font-weight:600}.amt .kL{color:#8a5a00}.amt .kD{color:#4a5b8c}.amt .lt,.kL0{text-decoration:underline;text-decoration-color:var(--warn);text-decoration-thickness:2px}
 .amt td.n{font-weight:600}.amt tr.stud td{font-size:10.5px;color:var(--mute)}.ponly{display:none}
 @media print{.ponly{display:block}.amt{font-size:8pt}.amt .nm{position:static}}
+
+/* timetable */
+.ttrows{display:flex;flex-direction:column;gap:2px}
+.ttr{display:grid;grid-template-columns:1.6fr 64px 1.8fr 1fr;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.ttr .ttsub b{display:block;font-size:14px;font-weight:600}.ttr .ttsub span{font-size:12px;color:var(--mute)}
+.ttr input,.ttr select{margin:0;font-size:14px}.ttr.short .ttper{border-color:var(--accent);background:rgba(217,150,26,.07)}
+@media(max-width:700px){.ttr{grid-template-columns:1fr 64px}.ttr .ttt,.ttr .ttc{grid-column:1/-1}}
+.ttg{border-collapse:separate;border-spacing:3px;width:100%;min-width:560px;table-layout:fixed}.ttg th{font-size:12px;color:var(--mute);font-weight:500}
+.ttg tbody th{width:52px;text-align:left}.ttg tbody th small{display:block;font-weight:400;font-size:10.5px}
+.ttg td.tc{background:var(--card);border:1px solid var(--line);border-radius:8px;height:46px;padding:4px 6px;vertical-align:top;cursor:pointer;font-size:12.5px;line-height:1.2}
+.ttg td.tc b{display:block;font-weight:600}.ttg td.tc small{color:var(--mute);font-size:11px}
+.ttg td.empty{background:transparent;border-style:dashed}.ttg td.na{background:transparent}.ttg td.pick{outline:2px solid var(--accent);outline-offset:-1px}
+.ttg td.clash{background:rgba(179,38,30,.10);border-color:#b3261e}.ttg td.comb{border-left:3px solid var(--brand)}
+.ttg tr.rec td{text-align:center;font-size:11px;color:var(--mute);letter-spacing:.06em;padding:2px}
+.tced{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.tced select{flex:1;margin:0}
+details.att{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}details.att summary{cursor:pointer;font-weight:600;font-size:14px}
+.ttpage{break-after:page;page-break-after:always;margin-bottom:16px}.ttpage h3{font-size:15px}
+@page ttland{size:A4 landscape;margin:10mm}
+@media print{.ttprint{page:ttland}.ttpage .ttg td.tc{height:14mm;border:1px solid #999}.ttpage .ttg{min-width:0}}
 </style>
 </head>
 <body>
@@ -304,6 +323,8 @@ fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled input,fieldse
 <script src="building.js"></script>
 <script src="students.js"></script>
 <script src="attendance.js"></script>
+<script src="staffing.js"></script>
+<script src="timetable.js"></script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>

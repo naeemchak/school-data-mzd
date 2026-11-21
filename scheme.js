@@ -56,5 +56,33 @@ const SCHEME = (() => {
     };
     return null;   // ECE: formative assessment only
   }
-  return { forClass };
+  /* periods per week, DCRD Scheme of Studies 2025 (summer zone); 8 periods a day, 5 on Friday = 45 slots */
+  const P = {
+    I_III: { 'Urdu': 7, 'English': 7, 'Mathematics': 6, 'Islamiat / Religious Education': 4, 'General Knowledge': 5, 'Nazra Quran & Tajweed / Ethics': 4,
+      'Foundational skills & character building': 3, 'Library / additional reading': 2, 'Physical training': 2 },
+    IV_V: { 'Urdu': 6, 'English': 6, 'Mathematics': 7, 'Islamiat / Religious Education': 4, 'Science': 7, 'Social Studies': 4, 'Nazra Quran / Ethics': 4,
+      'Foundational skills & character building': 3, 'Library / additional reading': 2, 'Physical training': 2 },
+    VI_VIII: { 'Urdu': 5, 'English': 5, 'Mathematics': 6, 'Islamiat / Religious Education': 3, 'Science': 6, 'Geography': 3, 'History': 3, 'Computer Education': 3,
+      'Understanding the Holy Quran / Ethics': 4, '*elective': 3, 'Personal growth & responsible citizenship': 2, 'Co-curricular activities': 2 },
+    IX_X: { 'Urdu': 5, 'English': 5, 'Islamiat / Religious Education': 5, 'Pakistan Studies': 5, 'Understanding the Holy Quran / Ethics': 3, 'Mathematics': 6, 'Physics': 6, 'Chemistry': 6,
+      'Biology': 6, 'Computer Education & IT': 6, 'General Mathematics': 6, 'General Science': 6, '*elective': 6, 'Good citizenship & character building': 2, 'Co-curricular activities': 1 },
+    XI_XII: { 'Urdu': 6, 'English': 6, 'Islamiat / Religious Education': 3, 'Pakistan Studies': 3, 'Understanding the Holy Quran / Ethics': 5, 'Applied Science': 6, 'Basic Medical Science': 6,
+      '*elective': 6, 'Good citizenship & character building': 1, 'Co-curricular activities': 1 }
+  };
+  const band = c => ['I', 'II', 'III'].includes(c) ? 'I_III' : ['IV', 'V'].includes(c) ? 'IV_V' : ['VI', 'VII', 'VIII'].includes(c) ? 'VI_VIII' : ['IX', 'X'].includes(c) ? 'IX_X' : ['XI', 'XII'].includes(c) ? 'XI_XII' : '';
+  /** subjects taught in a class-section with the scheme's periods: [{subject, periods, kind:'core'|'elective'|'grade'}] */
+  function timetableSubjects(cls, group, electives) {
+    if (cls === 'ECE') return [{ subject: 'ECE activities (class teacher)', periods: 40, kind: 'core' }];
+    const f = forClass(cls); if (!f) return [];
+    const g = f.get(group || f.groups[0]), pb = P[band(cls)] || {};
+    const out = g.fixed.map(([s]) => ({ subject: s, periods: pb[s] || 0, kind: 'core' }));
+    (electives || []).forEach(s => out.push({ subject: s, periods: pb['*elective'] || 0, kind: 'elective' }));
+    g.grades.forEach(s => out.push({ subject: s, periods: pb[s] || 0, kind: 'grade' }));
+    if (['IX', 'X'].includes(cls) && (group || f.groups[0]) === 'Science') { const c = out.find(x => x.subject === 'Computer Education & IT'); if (c) { c.periods = 0; c.alt = 'Biology'; } }
+    // Science / Computer in IX-X are alternatives: students take one; both are listed so each section can drop the one it does not teach
+    return out;
+  }
+  /** how many electives a section of this class and group takes */
+  function electiveCount(cls, group) { if (['VI', 'VII', 'VIII'].includes(cls)) return 1; if (['IX', 'X'].includes(cls)) return group === 'Science' ? 0 : 2; if (['XI', 'XII'].includes(cls)) return group === 'General Education' || !group ? 3 : 2; return 0; }
+  return { forClass, timetableSubjects, electiveCount };
 })();

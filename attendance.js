@@ -34,7 +34,10 @@ const ATTC = {
       ATTC.setMonth(m, { teachers: j.teachers.concat(keep(j.teachers, 'teachers')), students: j.students.concat(keep(j.students, 'students')), daily: j.daily, at: Date.now() }); } } catch (e) { }
   },
   put(m, kind, row) { const v = ATTC.month(m); v[kind] = (v[kind] || []).filter(r => r.key !== row.key).concat([Object.assign({ _pending: 1 }, row)]); ATTC.setMonth(m, v); },
-  staff() { const d = D(); return (d ? d.employees : []).filter(e => e.record_state !== 'Left').sort((a, b) => Number(b.post_bps || 0) - Number(a.post_bps || 0) || a.name.localeCompare(b.name)); },
+  /** marked here: own staff not attached elsewhere, surplus staff attached here, Community Teachers */
+  staff() { const d = D(); if (!d) return [];
+    const emp = d.employees.filter(e => e.record_state !== 'Left' && !(e.attached_to && e.attached_to !== S.emis)).sort((a, b) => Number(b.post_bps || 0) - Number(a.post_bps || 0) || a.name.localeCompare(b.name));
+    return emp.concat((d.community || []).filter(c => c.status !== 'Returned' && !String(c.id).startsWith('tmp')).map(c => ({ cnic: 'CT:' + c.id, name: c.name, own_designation: 'Community Teacher', designation: 'Community Teacher', post_bps: 0 }))); },
   classes() { const g = {}; REG.students().forEach(s => { const k = s.class + '|' + (s.section || ''); (g[k] = g[k] || []).push(s); });
     return Object.keys(g).sort((a, b) => CLASSES.indexOf(a.split('|')[0]) - CLASSES.indexOf(b.split('|')[0]) || a.localeCompare(b)).map(k => ({ key: k, cls: k.split('|')[0], sec: k.split('|')[1], kids: g[k] })); }
 };

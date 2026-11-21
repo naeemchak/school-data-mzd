@@ -112,7 +112,7 @@ setInterval(sync, 60000);
 /* ---------------- data ---------------- */
 const instKey = e => 'inst_' + e;
 const D = () => LS.get(instKey(S.emis), null);
-const saveD = d => { const old = (!d.register || !d.att) ? D() : null; if (old && !d.register && old.register) d.register = old.register; if (old && !d.att && old.att) d.att = old.att;   // the student register lives beside the institution record
+const saveD = d => { const old = (!d.register || !d.att || !d.tt) ? D() : null; if (old && !d.register && old.register) d.register = old.register; if (old && !d.att && old.att) d.att = old.att; if (old && !d.tt && old.tt) d.tt = old.tt;   // the student register lives beside the institution record
   LS.set(instKey(S.emis), d); };
 async function refreshInst(silent) {
   if (!S.emis || !navigator.onLine) return;
@@ -154,7 +154,7 @@ function render() {
   NAV.close();
   if (!S.token) { document.body.classList.remove('wide', 'nav'); $('#side').hidden = true; $('#menu').hidden = true; $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
   document.body.classList.add('nav'); $('#side').hidden = false; $('#menu').hidden = false;
-  document.body.classList.toggle('wide', ['home', 'reports', 'institutions', 'search', 'review', 'approvals', 'attmonth'].includes(S.view));
+  document.body.classList.toggle('wide', ['home', 'reports', 'institutions', 'search', 'review', 'approvals', 'attmonth', 'timetable', 'ttprint'].includes(S.view));
   $('#back').hidden = !S.stack.length;
   const i = inst();
   const TOP = { building: '', institutions: 'Institutions', search: 'Staff search', approvals: 'Approvals', review: 'Review', reports: 'Reports', settings: 'Settings', about: 'About' };
@@ -240,6 +240,7 @@ V.home = () => {
     ${isOffice ? '' : `<button class="tile" onclick="go('enrol')"><b>Enrolment</b><small>Monthly, class-wise</small><div class="ur">داخلہ</div></button>
     <button class="tile" onclick="go('fees')"><b>Fees</b><small>${primaryFees ? 'Entered by AEO' : 'Collection and deposits'}</small><div class="ur">فیس</div></button>
     <button class="tile" onclick="go('results')"><b>Results</b><small>Term, annual, monthly tests</small><div class="ur">نتائج</div></button>
+    <button class="tile" onclick="go('timetable')"><b>Timetable</b><small>Subjects, teachers and periods</small><div class="ur">ٹائم ٹیبل</div></button>
     <button class="tile tile-att" onclick="go('attendance')"><b>Attendance</b><small>Teachers and students, today</small><div class="ur">حاضری</div></button>
     <button class="tile" onclick="go('students')"><b>Students</b><small>${d && d.register && d.register.students ? d.register.students.length + ' enrolled in the register' : 'Admission register'}</small><div class="ur">طلبہ</div></button>
     <button class="tile" onclick="go('building')"><b>Building</b><small>${d && d.facilities ? 'Facilities profile · ' + (d.facilities.status === 'Accepted' ? 'recorded' : String(d.facilities.status).toLowerCase()) : 'Facilities profile not entered yet'}</small><div class="ur">عمارت</div></button>`}
@@ -305,7 +306,8 @@ V.staff = () => {
   const list = d.employees.slice().sort((a, b) => Number(b.post_bps || 0) - Number(a.post_bps || 0)).map(e =>
     `<div class="it" onclick="go('emp',{cnic:'${esc(e.cnic)}'})"><div class="grow"><b>${esc(e.name)}</b>
     <div class="sub">${outOfTitle(e) ? esc(e.own_designation) + ' <span class="badge w">' + (e.placement === 'Current charge basis' ? 'current charge' : e.placement === 'Officiating basis' ? 'officiating' : BASES.includes(e.placement) ? 'against' : 'basis not stated') + ': ' + esc(e.designation) + ' post</span>' : esc(e.designation)} · BPS ${esc(e.post_bps)}${e.personal_bps && e.personal_bps !== e.post_bps ? ' (personal ' + esc(e.personal_bps) + ')' : ''} · ${esc(e.service_status)}
-    ${e.charge_type ? '<br><span class="badge">' + esc(e.charge_type) + ': ' + esc(e.charge_designation) + '</span>' : ''}</div></div>
+    ${e.charge_type ? '<br><span class="badge">' + esc(e.charge_type) + ': ' + esc(e.charge_designation) + '</span>' : ''}
+    ${e.attached_here ? '<br><span class="badge w">Surplus · attached here from ' + esc(e.emis) + '</span>' : e.attached_to ? '<br><span class="badge w">Surplus · attached to ' + esc(e.attached_to) + '</span>' : e.surplus ? '<br><span class="badge w">' + esc(e.surplus) + (e.salary_source ? ' · salary: ' + esc(e.salary_source) : '') + '</span>' : ''}</div></div>
     <span class="badge ${e.verified === 'Verified' ? 'o' : 'w'}">${e.verified === 'Verified' ? 'Verified' : 'Unverified'}</span></div>`).join('');
   // requests from other institutions for this institution's staff: confirm relieving or reject
   const out = (d.transfersOut || []).filter(t => t.status === 'Awaiting outgoing institution').map(t =>
@@ -321,13 +323,16 @@ V.staff = () => {
   <button class="btn alt" onclick="go('receive')">Receive transferred employee</button>
   ${pend.length ? `<div class="msg w">${pend.length} staff entr${pend.length > 1 ? 'ies' : 'y'} waiting to be sent.</div>` : ''}
   <div class="list">${list || '<p class="muted">No employee on the register yet. Use “First-time entry” for each employee who is not yet in the database.</p>'}</div></div>
+  <div class="card"><div class="db-sh rhead"><h3>Community Teachers (${(d.community || []).length})</h3><span class="rbtn"><button class="btn alt" onclick="go('ct',{})">+ Add</button></span></div>
+  <p class="muted">Engaged by the community or SMC; not civil servants and not counted against posts.</p>
+  ${(d.community || []).length ? `<div class="list">${d.community.map(c => `<div class="it tap" onclick="go('ct',{id:'${esc(c.id)}'})"><div class="grow"><b>${esc(c.name)}</b> <span class="muted">s/o ${esc(c.father_name)}</span><div class="sub">${esc(c.subject || 'Community Teacher')}${c.paid_by ? ' · paid by ' + esc(c.paid_by) : ''}</div></div><span class="badge ${c.status === 'Approved' || c.status === 'Accepted' ? 'o' : 'w'}">${c.status === 'Approved' || c.status === 'Accepted' ? 'Verified' : c.status === 'Returned' ? 'Returned' : 'Unverified'}</span><span class="chev">›</span></div>`).join('')}</div>` : ''}</div>
   ${out ? `<div class="card"><h2>Transfer of your staff: please confirm</h2><p class="muted">Another institution has asked for the record of these employees. Confirm the date of relieving, or reject if the employee has not been relieved or is the wrong person.</p><div class="list">${out}</div></div>` : ''}
   ${inc ? `<div class="card"><h2>Incoming transfers</h2><p class="muted">The record comes here after the outgoing institution confirms relieving and the AEO / DDEO / DEO office of both institutions approve.</p><div class="list">${inc}</div></div>` : ''}`;
 };
 window.tresp = (id, decision) => {
   const d = D(), t = (d.transfersOut || []).find(x => x.id === id);
   let p = { id, decision };
-  if (decision === 'confirm') { const dt = prompt('Date of relieving (yyyy-mm-dd):', today()); if (!dt) return; if (!/^\d{4}-\d{2}-\d{2}$/.test(dt)) return toast('Write the date as yyyy-mm-dd'); p.relieved_on = dt; }
+  if (decision === 'confirm') { const t0 = prompt('Date of relieving (dd-mm-yyyy):', dmy(today())); if (!t0) return; const t1 = t0.trim().replace(/[./]/g, '-'), dt = /^\d{4}-\d{2}-\d{2}$/.test(t1) ? t1 : DT.toIso(t1); if (!dt) return toast('Write the date as dd-mm-yyyy'); p.relieved_on = dt; }
   else { const r = prompt('Reason for rejecting (the requesting institution will see it):'); if (!r) return; p.remark = r; }
   queue('respondTransfer', p, (decision === 'confirm' ? 'Relieving: ' : 'Reject transfer: ') + (t ? t.name : ''));
   if (t) t.status = decision === 'confirm' ? 'Awaiting officer approval' : 'Rejected by outgoing institution'; saveD(d); render();
@@ -885,7 +890,7 @@ BIND.approvals = async () => {
   const items = j.items || [];
   S.boot.pending = items.length; LS.set('boot', S.boot);
   S.pendingItems = items;
-  const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer', Facilities: 'Building' };
+  const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer', Facilities: 'Building', CommunityTeachers: 'Community Teacher', Attachments: 'Surplus attachment' };
   $('#al').innerHTML = items.length ? `<p class="muted">Tap an item to see the full record and decide.</p>` + items.map((x, k) =>
     `<div class="it tap" onclick="openReview(${k})"><div class="grow"><b>${esc(x.inst)}</b> <span class="pill">${KIND[x.sheet] || x.sheet}</span><div class="sub">${esc(x.what)}</div><div class="sub">${esc(dmy(x.submitted_on))} · ${esc(x.submitted_by)}</div></div><span class="chev">›</span></div>`).join('')
     : '<p class="muted">Nothing is waiting.</p>';
@@ -955,6 +960,8 @@ const ICON = {
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   building: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-5h6v5M9 11h2M13 11h2"/></svg>',
   attendance: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M8.5 15l2.2 2.2 4.8-4.7"/></svg>',
+  timetable: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M15 9v11M3 14.5h18"/></svg>',
+  smc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="7" r="3"/><circle cx="5" cy="10" r="2.3"/><circle cx="19" cy="10" r="2.3"/><path d="M7 20a5 5 0 0 1 10 0M1.5 19a3.6 3.6 0 0 1 5.5-3M22.5 19a3.6 3.6 0 0 0-5.5-3"/></svg>',
   students: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="7" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0M3 11h3M18 11h3"/></svg>',
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>'
 };
@@ -977,12 +984,14 @@ const NAV = (() => {
         { id: 'istaff', label: 'Staff', icon: 'staff', on: S.view === 'staff', go: () => jump('staff') },
         { id: 'iposts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
         ...(isOffice ? [] : [
+          { id: 'itimetable', label: 'Timetable', icon: 'timetable', on: ['timetable', 'ttprint'].includes(S.view), go: () => jump('timetable') },
           { id: 'iattendance', label: 'Attendance', icon: 'attendance', on: ['attendance', 'tatt', 'satt', 'attmonth'].includes(S.view), go: () => jump('attendance') },
           { id: 'istudents', label: 'Students', icon: 'students', on: ['students', 'student', 'sleft', 'sprint'].includes(S.view), go: () => jump('students') },
           { id: 'ienrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
           { id: 'ifees', label: 'Fees', icon: 'fees', on: S.view === 'fees', go: () => jump('fees') },
           { id: 'iresults', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },
-          { id: 'ibuilding', label: 'Building', icon: 'building', on: S.view === 'building', go: () => jump('building') }])
+          { id: 'ibuilding', label: 'Building', icon: 'building', on: S.view === 'building', go: () => jump('building') },
+          { id: 'ismc', label: 'School committee (SMC)', icon: 'smc', on: ['smc', 'smcm', 'smcmeet'].includes(S.view), go: () => jump('smc') }])
       ] : []),
       { sec: '' },
       { id: 'settings', label: 'Settings', icon: 'settings', on: S.view === 'settings', go: () => jump('settings') },
@@ -992,12 +1001,14 @@ const NAV = (() => {
       { id: 'home', label: 'My school', icon: 'home', on: S.view === 'home', go: () => jump('home') },
       { id: 'staff', label: 'Staff', icon: 'staff', on: S.view === 'staff' || S.view === 'emp' || S.view === 'receive', go: () => jump('staff') },
       { id: 'posts', label: 'Posts', icon: 'posts', on: S.view === 'posts', go: () => jump('posts') },
+      { id: 'timetable', label: 'Timetable', icon: 'timetable', on: ['timetable', 'ttprint'].includes(S.view), go: () => jump('timetable') },
       { id: 'attendance', label: 'Attendance', icon: 'attendance', on: ['attendance', 'tatt', 'satt', 'attmonth'].includes(S.view), go: () => jump('attendance') },
       { id: 'students', label: 'Students', icon: 'students', on: ['students', 'student', 'withdraw', 'slc', 'simport', 'sleft', 'sprint'].includes(S.view), go: () => jump('students') },
       { id: 'enrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
       { id: 'fees', label: primary ? 'Fees (by AEO)' : 'Fees', icon: 'fees', on: S.view === 'fees' || S.view === 'deposit', go: () => jump('fees') },
       { id: 'results', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },
       { id: 'building', label: 'Building', icon: 'building', on: S.view === 'building', go: () => jump('building') },
+      { id: 'smc', label: 'School committee (SMC)', icon: 'smc', on: ['smc', 'smcm', 'smcmeet'].includes(S.view), go: () => jump('smc') },
       { id: 'reports', label: 'Reports', icon: 'report', on: S.view === 'reports', go: () => jump('reports') },
       { sec: '' },
       { id: 'settings', label: 'Settings', icon: 'settings', on: S.view === 'settings', go: () => jump('settings') },
@@ -1221,6 +1232,19 @@ BIND.review = async x => {
       <b>Order</b><span>${esc(t.order_no)}${t.order_date ? ' dt ' + esc(dmy(t.order_date)) : ''}</span><b>Joined</b><span>${esc(dmy(t.joined_on))}</span><b>Relieved</b><span>${t.relieved_on ? esc(dmy(t.relieved_on)) + ' (confirmed by ' + esc(t.outgoing_by) + ')' : '<span class="db-no">not yet confirmed by the outgoing institution</span>'}</span>
       <b>Officer approvals</b><span>${t.out_approved_by ? '✓ outgoing side (' + esc(t.out_approved_by) + ')' : '… outgoing side'}<br>${t.approved_by ? '✓ receiving side (' + esc(t.approved_by) + ')' : '… receiving side'}</span></div>`
       + (e ? `<h3>Service record</h3><div class="kv2"><b>CNIC</b><span>${esc(e.employee.cnic)}</span><b>Own title</b><span>${esc(e.employee.own_designation || e.employee.designation)} (BPS-${esc(e.employee.own_bps || e.employee.post_bps)})</span><b>First appointed</b><span>${esc(e.employee.first_appt_date)} as ${esc(e.employee.first_designation)}</span><b>Postings</b><span>${e.postings.map(p => esc(p.station_name) + ' ' + esc(dmy(p.from_date)) + '–' + esc(dmy(p.to_date) || 'now')).join('<br>') || '–'}</span></div>` : '');
+  }
+  if (x.sheet === 'CommunityTeachers') {
+    const c = it.rows[0];
+    html = `<div class="kv2"><b>Name</b><span>${esc(c.name)} s/o ${esc(c.father_name)}</span><b>CNIC</b><span>${esc(c.cnic || '–')}</span><b>Qualification</b><span>${esc(c.qualification || '–')}</span><b>Subject</b><span>${esc(c.subject || '–')}</span>
+      <b>Paid by</b><span>${esc(c.paid_by || '–')}${c.paid_by_name ? ' (' + esc(c.paid_by_name) + ')' : ''}${c.honorarium ? ' · Rs ' + esc(c.honorarium) + ' a month' : ''}</span><b>Serving since</b><span>${esc(dmy(c.from_date))}</span><b>Mobile</b><span>${esc(c.mobile || '–')}</span></div>
+      <p class="muted">A Community Teacher is not a civil servant and is not counted against any post.</p>`;
+  }
+  if (x.sheet === 'Attachments') {
+    const a = it.attachment, e = it.employee;
+    html = `<div class="kv2"><b>Employee</b><span>${esc(a.name)}, ${esc(a.designation)}</span><b>Present posting</b><span>${esc(a.from_name)}</span><b>Attach to</b><span>${esc(a.to_name)}</span>
+      <b>Situation</b><span>${a.kind === 'no_parent' ? 'No parent institution; the record moves to ' + esc(a.to_name) + ' with no post' : 'Keeps parent institution; attendance marked at ' + esc(a.to_name)}</span>
+      ${a.salary_source ? `<b>Salary</b><span>${esc(a.salary_source)}</span>` : ''}<b>Order</b><span>${esc(a.order_no || '–')}${a.order_date ? ' dt ' + esc(dmy(a.order_date)) : ''}</span><b>Joins on</b><span>${esc(dmy(a.joined_on))}</span>${a.remark ? `<b>Remarks</b><span>${esc(a.remark)}</span>` : ''}</div>
+      ${e ? `<h3>Service record</h3><div class="kv2"><b>Own title</b><span>${esc(e.employee.own_designation || e.employee.designation)} (substantive BPS-${esc(e.employee.own_bps || e.employee.post_bps)})</span><b>Post occupied</b><span>${esc(e.employee.designation)}</span><b>Postings</b><span>${e.postings.map(p => esc(p.station_name) + ' ' + esc(dmy(p.from_date)) + '–' + esc(dmy(p.to_date) || 'now')).join('<br>') || '–'}</span></div>` : ''}`;
   }
   if (x.sheet === 'Facilities') {
     const f = it.rows[0];
