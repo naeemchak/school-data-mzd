@@ -154,10 +154,10 @@ function render() {
   NAV.close();
   if (!S.token) { document.body.classList.remove('wide', 'nav'); $('#side').hidden = true; $('#menu').hidden = true; $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
   document.body.classList.add('nav'); $('#side').hidden = false; $('#menu').hidden = false;
-  document.body.classList.toggle('wide', ['home', 'reports', 'institutions', 'search', 'review', 'approvals', 'attmonth', 'timetable', 'ttprint', 'impl', 'cert'].includes(S.view));
+  document.body.classList.toggle('wide', ['home', 'reports', 'report', 'institutions', 'search', 'review', 'approvals', 'attmonth', 'timetable', 'ttprint', 'impl', 'cert'].includes(S.view));
   $('#back').hidden = !S.stack.length;
   const i = inst();
-  const TOP = { building: '', institutions: 'Institutions', search: 'Staff search', approvals: 'Approvals', review: 'Review', reports: 'Reports', settings: 'Settings', about: 'About' };
+  const TOP = { building: '', institutions: 'Institutions', search: 'Staff search', approvals: 'Approvals', review: 'Review', reports: 'Reports', report: 'Reports', settings: 'Settings', about: 'About' };
   $('#title').textContent = TOP[S.view] && role() !== 'SCHOOL' ? TOP[S.view] : S.emis ? (i.name || S.emis) : S.user.name;
   NAV.render();
   if (S.view === 'home' && role() !== 'SCHOOL' && !S.emis) { app.innerHTML = V.picker(); bindPicker(); showSync(); return; }
@@ -546,7 +546,25 @@ V.emp = arg => {
   ${arg.review ? `<div class="decide"><button class="btn" id="es">Save changes</button><button class="btn" style="background:var(--ok)" onclick="decide('approve')">Approve record</button><button class="btn warn" onclick="decide('return')">Return with remarks</button></div>`
     : `<button class="btn full" id="es">${isNew ? 'Save employee' : 'Save changes'}</button>
   ${isNew ? '' : `<button class="btn warn" onclick="go('depart',{cnic:'${esc(e.cnic)}',name:'${esc(e.name)}'})">Record retirement / death / leaving district</button>`}`}
+  ${!isNew && e.cnic && e.verified !== 'Verified' ? `<div class="fixbox"><h3>Entered at the wrong institution?</h3>
+    <p class="muted">This record is not yet verified, so it can still be corrected.</p>
+    <button class="btn alt" onclick="EMPFIX.withdraw('${esc(e.cnic)}','${esc(e.name)}')">This person does not serve here</button>
+    ${role() !== 'SCHOOL' ? `<div class="row"><div><label>Move to institution</label><input id="mvq" class="search" placeholder="Type name or EMIS"><select id="mvs"></select></div></div>
+    <button class="btn alt" onclick="EMPFIX.move('${esc(e.cnic)}','${esc(e.name)}')">Move record there</button>` : ''}</div>` : ''}
   </div>`;
+};
+const EMPFIX = {
+  done(cnic, msg) { const d = D(); if (d) { d.employees = d.employees.filter(x => x.cnic !== cnic); saveD(d); } toast(msg); if (S.view === 'emp' && S.arg && S.arg.review) { go('approvals'); return; } S.stack.pop(); back(); },
+  withdraw(cnic, name) {
+    if (!confirm(name + ' will be removed from this institution as entered by mistake. The right institution can then enter the record. Continue?')) return;
+    queue('correctStation', { cnic, mode: 'withdraw' }, 'Withdrawn (entered by mistake): ' + name); this.done(cnic, 'Removed from this institution');
+  },
+  fill() { const q = ($('#mvq').value || '').toLowerCase(), list = ((S.boot && S.boot.institutions) || []).filter(i => i.level !== 'Office' && i.emis !== S.emis && (!q || (i.name + ' ' + i.emis).toLowerCase().includes(q))).slice(0, 80);
+    $('#mvs').innerHTML = '<option value="">— choose —</option>' + list.map(i => `<option value="${i.emis}">${esc(i.name)} (${i.emis})</option>`).join(''); },
+  move(cnic, name) { const to = $('#mvs').value; if (!to) return toast('Choose the institution');
+    const t = ((S.boot && S.boot.institutions) || []).find(i => i.emis === to) || {};
+    if (!confirm('Move ' + name + ' to ' + t.name + '? That institution will choose the post, and the record will be verified again.')) return;
+    queue('correctStation', { cnic, mode: 'move', to_emis: to }, 'Moved ' + name + ' to ' + t.name); this.done(cnic, 'Moved to ' + t.name); }
 };
 function histEditor(promos, posts) {
   const pr = (x = {}) => `<div class="hist" data-h="p"><div class="row"><div><label>Date of promotion</label><input type="date" data-f="date" value="${esc(x.date)}"></div>
@@ -572,6 +590,7 @@ function readHist(kind) {
   }).filter(o => Object.values(o).some(v => v));
 }
 BIND.emp = async arg => {
+  if ($('#mvq')) { $('#mvq').oninput = () => EMPFIX.fill(); EMPFIX.fill(); }
   const isNew = arg.mode === 'new';
   let histLoaded = isNew;
   bindPlacement($('#ef'));
@@ -885,19 +904,38 @@ BIND.results = () => {
 };
 
 /* ---------- approvals ---------- */
-V.approvals = () => `<div class="card"><h2>Waiting for approval</h2><div class="list" id="al"><p class="muted">${navigator.onLine ? 'Loading…' : 'Approvals need internet.'}</p></div></div>`;
+V.approvals = () => `<div class="card"><h2>Waiting for approval</h2>
+  <input type="search" id="aq" class="search" placeholder="Search institution, EMIS, type, month or person" autocomplete="off">
+  <div class="seg" id="ak"></div><p class="muted" id="an"></p><div class="list" id="al"><p class="muted">${navigator.onLine ? 'Loading…' : 'Approvals need internet.'}</p></div></div>`;
+const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer', Facilities: 'Building', CommunityTeachers: 'Community Teacher', Attachments: 'Surplus attachment' };
 BIND.approvals = async () => {
   if (!navigator.onLine) return;
   const j = await api('listPending', {});
-  const items = j.items || [];
+  const items = (j.items || []).map((x, k) => Object.assign(x, { _k: k }));
   S.boot.pending = items.length; LS.set('boot', S.boot);
   S.pendingItems = items;
-  const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer', Facilities: 'Building', CommunityTeachers: 'Community Teacher', Attachments: 'Surplus attachment' };
-  $('#al').innerHTML = items.length ? `<p class="muted">Tap an item to see the full record and decide.</p>` + items.map((x, k) =>
-    `<div class="it tap" onclick="openReview(${k})"><div class="grow"><b>${esc(x.inst)}</b> <span class="pill">${KIND[x.sheet] || x.sheet}</span><div class="sub">${esc(x.what)}</div><div class="sub">${esc(dmy(x.submitted_on))} · ${esc(x.submitted_by)}</div></div><span class="chev">›</span></div>`).join('')
-    : '<p class="muted">Nothing is waiting.</p>';
+  if (!items.length) { $('#al').innerHTML = '<p class="muted">Nothing is waiting.</p>'; $('#aq').hidden = true; return; }
+  const ageDays = x => { const d = String(x.submitted_on || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) ? Math.floor((Date.parse(today()) - Date.parse(d)) / 864e5) : 0; };
+  items.sort((a, b) => String(a.submitted_on).localeCompare(String(b.submitted_on)));     // oldest first
+  let kind = LS.get('a_kind', ''); if (kind && !items.some(x => x.sheet === kind)) kind = '';
+  const counts = {}; items.forEach(x => { counts[x.sheet] = (counts[x.sheet] || 0) + 1; });
+  const hay = x => [x.inst, x.emis, KIND[x.sheet] || x.sheet, x.what, x.submitted_by, dmy(x.submitted_on)].join(' ').toLowerCase();
+  const draw = () => {
+    $('#ak').innerHTML = `<button class="${kind ? '' : 'on'}" data-k="">All ${items.length}</button>` + Object.keys(counts).sort((a, b) => counts[b] - counts[a])
+      .map(k => `<button class="${kind === k ? 'on' : ''}" data-k="${k}">${KIND[k] || k} ${counts[k]}</button>`).join('');
+    $('#ak').querySelectorAll('button').forEach(b => b.onclick = () => { kind = b.dataset.k; LS.set('a_kind', kind); draw(); });
+    const words = $('#aq').value.toLowerCase().split(/\s+/).filter(Boolean);
+    const f = items.filter(x => (!kind || x.sheet === kind) && words.every(w => hay(x).includes(w)));
+    const late = f.filter(x => ageDays(x) > 3).length;
+    $('#an').textContent = `${f.length} shown, oldest first${late ? ` · ${late} waiting more than 3 days` : ''}. Tap an item to see the full record and decide.`;
+    $('#al').innerHTML = f.slice(0, 1000).map(x => { const a = ageDays(x);
+      return `<div class="it tap" onclick="openReview(${x._k})"><div class="grow"><b>${esc(x.inst)}</b> <span class="pill">${KIND[x.sheet] || x.sheet}</span><div class="sub">${esc(x.what)}</div><div class="sub">${esc(dmy(x.submitted_on))} · ${esc(x.submitted_by)}</div></div>`
+        + `<span class="age ${a > 3 ? 'late' : ''}">${a < 1 ? 'today' : a + (a === 1 ? ' day' : ' days')}</span><span class="chev">›</span></div>`; }).join('')
+      + (f.length > 1000 ? `<p class="muted">First 1,000 shown. Search or choose a type to narrow the list.</p>` : '') || '<p class="muted">No item matches.</p>';
+  };
+  $('#aq').oninput = draw; draw();
 };
-window.openReview = k => { const x = S.pendingItems[k]; go('review', x); };
+window.openReview = k => { const x = S.pendingItems.find(i => i._k === k); go('review', x); };
 
 /* ---------- about ---------- */
 V.about = () => `<div class="card about">
@@ -986,7 +1024,7 @@ const NAV = (() => {
       { id: 'institutions', label: 'Institutions', icon: 'inst', on: S.view === 'institutions', go: () => jump('institutions') },
       { id: 'search', label: 'Staff search', icon: 'search', on: S.view === 'search', go: () => jump('search') },
       { id: 'approvals', label: 'Approvals', icon: 'check', count: p, on: S.view === 'approvals' || S.view === 'review', go: () => jump('approvals') },
-      { id: 'reports', label: 'Reports', icon: 'report', on: S.view === 'reports', go: () => jump('reports') },
+      { id: 'reports', label: 'Reports', icon: 'report', on: S.view === 'reports' || S.view === 'report', go: () => jump('reports') },
       { sec: S.emis && S.emis !== S.user.scope ? (i.name || S.emis) : '' },
       ...(S.emis && S.emis !== S.user.scope ? [
         { id: 'ihome', label: 'Overview', icon: 'home', on: S.view === 'home' && !!S.emis, go: () => jump('home') },
@@ -1020,7 +1058,7 @@ const NAV = (() => {
       { id: 'results', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },
       { id: 'building', label: 'Building', icon: 'building', on: S.view === 'building', go: () => jump('building') },
       { id: 'smc', label: 'School committee (SMC)', icon: 'smc', on: ['smc', 'smcm', 'smcmeet'].includes(S.view), go: () => jump('smc') },
-      { id: 'reports', label: 'Reports', icon: 'report', on: S.view === 'reports', go: () => jump('reports') },
+      { id: 'reports', label: 'Reports', icon: 'report', on: S.view === 'reports' || S.view === 'report', go: () => jump('reports') },
       { sec: '' },
       { id: 'settings', label: 'Settings', icon: 'settings', on: S.view === 'settings', go: () => jump('settings') },
       { id: 'about', label: 'About', icon: 'info', on: S.view === 'about', go: () => jump('about') }
@@ -1166,44 +1204,112 @@ async function ensureInst(emis) {
 }
 window.openStaff = async k => { const e = S.searchFound[k]; if (await ensureInst(e.emis)) go('emp', { cnic: e.cnic }); };
 
-/* ---------- reports ---------- */
+/* ---------- reports (v4G.1: catalogue, key figures, search, sort) ---------- */
 const HALQAS = ['Halqa 1', 'Halqa 2', 'Halqa 3', 'Halqa 4', 'Halqa 5'], LEVELS = ['Higher Secondary', 'High', 'Middle', 'Primary'];
-V.reports = () => `<div class="card noprint"><h2>Reports</h2><div class="seg" id="rp"></div>
-  ${role() !== 'SCHOOL' ? `<div class="row"><div><label>Halqa</label><select id="rh">${opts(HALQAS, LS.get('r_halqa', ''), 'All')}</select></div><div><label>Level</label><select id="rl">${opts(LEVELS, LS.get('r_level', ''), 'All')}</select></div></div>` : ''}
-  <p class="muted" id="rnote"></p></div>
-  <div class="card"><div class="db-sh rhead"><h3 id="rtitle"></h3><span class="noprint rbtn"><button class="btn alt" onclick="REP.csv()">Download CSV</button><button class="btn alt" onclick="window.print()">Print</button></span></div>
-  <div class="rwrap"><table class="rtable" id="rt"></table></div><p class="muted" id="rcount"></p></div>`;
-const REP = { cur: null,
-  csv() { if (!REP.cur) return; const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-    const txt = [REP.cur.head].concat(REP.cur.rows.map(r => r.map(dmy))).map(r => r.map(q).join(',')).join('\n');
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + txt], { type: 'text/csv' })); a.download = (REP.cur.title + ' ' + today()).replace(/[^\w\- ]+/g, '') + '.csv'; a.click(); } };
+const RGROUPS = ['Staff and posts', 'Students and attendance', 'Money', 'Learning', 'Buildings and committees', 'Implementation'];
+// k: key figures [label, how, column (exact name or /regex/ over several columns), test]; how = sum | avg | count | countif | distinct | pct (sum a ÷ sum b)
+const RMETA = {
+  vacancy: { g: 0, d: 'Sanctioned, filled and vacant posts, post by post, with current and additional charges.', k: [['Sanctioned', 'sum', 'Sanctioned'], ['Filled', 'sum', 'Filled'], ['Vacant', 'sum', 'Vacant'], ['Vacant, held on current charge', 'sum', 'Vacant but held on current charge (No.)']] },
+  outoftitle: { g: 0, d: 'Staff working against a post of another title, and additional charges.', k: [['Staff listed', 'count'], ['Basis not stated', 'countif', 'Basis of holding the post', v => v === 'Basis not stated'], ['Additional charges', 'countif', 'Additional charge', v => !!v]] },
+  exceptions: { g: 0, d: 'Staff below their substantive scale, and surplus staff attached elsewhere.', k: [['Staff listed', 'count'], ['Institutions', 'distinct', 'EMIS']] },
+  directory: { g: 0, d: 'Every employee with post, scale, mobile and verification.', k: [['Employees', 'count'], ['Institutions', 'distinct', 'EMIS'], ['Not yet verified', 'countif', 'Verification', v => v !== 'Verified']] },
+  retirements: { g: 0, d: 'Employees reaching the age of 60 in the next 12 months.', k: [['Employees', 'count'], ['Institutions', 'distinct', 'EMIS']] },
+  community: { g: 0, d: 'Community Teachers: who pays them, honorarium and subject.', k: [['Community Teachers', 'count'], ['Institutions', 'distinct', 'EMIS'], ['Honorarium a month (Rs)', 'sum', 'Monthly honorarium (Rs)']] },
+  students: { g: 1, d: 'Student registers: enrolment by class, admissions, leaving and dropouts. No names.', k: [['Enrolled', 'sum', 'Enrolled (register)'], ['Boys', 'sum', 'Boys'], ['Girls', 'sum', 'Girls'], ['Registers not started', 'countif', 'Register', v => v !== 'Yes']] },
+  attendance: { g: 1, d: 'Staff and student attendance by institution, this month and last.', k: [['Staff present', 'avg%', 'Staff present %'], ['Students present', 'avg%', 'Student attendance %'], ['Late arrivals', 'sum', 'Late arrivals'], ['Absent without leave (staff-days)', 'sum', 'Absent without leave (staff-days)']] },
+  attendance_staff: { g: 1, d: 'This month, employee by employee: days present, late, absent and on leave.', k: [['Employees', 'count'], ['Late arrivals', 'sum', 'Late arrivals'], ['Days absent without leave', 'sum', 'Days absent without leave']] },
+  fees: { g: 2, d: 'Fees expected from enrolment, collected and deposited, month by month.', k: [['Expected (Rs)', 'sum', /^Expected/], ['Collected (Rs)', 'sum', /^Collected/], ['Short (Rs)', 'sum', 'SHORT COLLECTION (sum of heads)'], ['Not deposited, A/C 101 (Rs)', 'sum', 'NOT DEPOSITED A/C 101']] },
+  annualfund: { g: 2, d: 'Annual fund for the whole school year against what is due.', k: [['Due (Rs)', 'sum', 'Annual fund due'], ['Collected (Rs)', 'sum', /Collected before the app|Recorded in the app/], ['Difference (Rs)', 'sum', 'Difference (+ excess / - short)']] },
+  results: { g: 3, d: 'Results by school, class and subject, in grade bands.', k: [['Appeared', 'sum', 'Appeared'], ['Passed', 'sum', 'Passed'], ['Pass rate', 'pct', ['Passed', 'Appeared']], ['Institutions', 'distinct', 'EMIS']] },
+  results_summary: { g: 3, d: 'Pass rates by exam, class and subject across the area.', k: [['Appeared', 'sum', 'Appeared'], ['Passed', 'sum', 'Passed'], ['Pass rate', 'pct', ['Passed', 'Appeared']]] },
+  teacher_results: { g: 3, d: 'Latest results linked to the teacher who taught the subject. Choose a Halqa and level first.', k: [['Teachers', 'distinct', 'Teacher'], ['Appeared', 'sum', 'Appeared'], ['Pass rate', 'pct', ['Passed', 'Appeared']]] },
+  infrastructure: { g: 4, d: 'Buildings, rooms, water, electricity, toilets, furniture and location.', k: [['Profiles entered', 'countif', 'Profile status', v => v && v !== 'Not entered'], ['Dangerous buildings', 'countif', 'Condition', v => /^Dangerous/.test(v)], ['No electricity', 'countif', 'Electricity', v => v === 'No'], ['No drinking water', 'countif', 'Drinking water', v => v === 'No']] },
+  smc: { g: 4, d: 'School Management Committees: members, chairperson and meetings.', k: [['Committees entered', 'countif', 'Committee entered', v => /^y/i.test(v)], ['Meetings in 12 months', 'sum', 'Meetings in last 12 months']] },
+  implementation: { g: 5, d: 'The implementation index of every institution, with what is still to do.', k: [['Average index', 'avg', 'Index (of 100)'], ['Fully implemented', 'countif', 'Status', v => /fully/i.test(v)], ['In progress', 'countif', 'Status', v => /progress/i.test(v)], ['Behind', 'countif', 'Status', v => /behind/i.test(v)]] },
+  compliance: { g: 5, d: 'Who has updated what: staff, enrolment, fees and results per institution.', k: [['Institutions', 'count'], ['No enrolment sent', 'countif', 'Last enrolment month', v => /^NONE/.test(v)], ['Staff not yet verified', 'sum', 'Not yet verified']] },
+  focal: { g: 5, d: 'Heads and app focal persons with mobile numbers.', k: [['Institutions', 'count'], ['Focal person named', 'countif', 'App focal person', v => !!v]] }
+};
+const fmtN = v => typeof v === 'number' ? (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : String(Math.round(v * 10) / 10)) : v;
+function repKeys(r, rows, meta) {
+  const ci = c => c instanceof RegExp ? r.head.map((h, j) => c.test(h) ? j : -1).filter(j => j >= 0) : [r.head.indexOf(c)].filter(j => j >= 0);
+  const sum = c => rows.reduce((a, x) => a + ci(c).reduce((b, j) => b + (typeof x[j] === 'number' ? x[j] : Number(x[j]) || 0), 0), 0);
+  return (meta.k || [['Rows', 'count']]).map(([label, how, c, test]) => {
+    let v = '';
+    if (how === 'count') v = rows.length;
+    else if (how === 'sum') v = ci(c).length ? sum(c) : '';
+    else if (how === 'countif') { const j = ci(c)[0]; v = j == null ? '' : rows.filter(x => test(String(x[j] == null ? '' : x[j]))).length; }
+    else if (how === 'distinct') { const j = ci(c)[0]; v = j == null ? '' : new Set(rows.map(x => x[j])).size; }
+    else if (how === 'avg' || how === 'avg%') { const j = ci(c)[0]; const n = rows.filter(x => typeof x[j] === 'number'); v = n.length ? Math.round(n.reduce((a, x) => a + x[j], 0) / n.length * 10) / 10 : ''; if (how === 'avg%' && v !== '') v = v + '%'; }
+    else if (how === 'pct') { const b = sum(c[1]); v = b ? Math.round(sum(c[0]) * 1000 / b) / 10 + '%' : ''; }
+    return [label, v];
+  }).filter(x => x[1] !== '');
+}
+function cueOf(h, v) {
+  if (typeof v !== 'number') return /^(Behind|Basis not stated|NONE)/.test(String(v)) ? 'cb' : '';
+  if (/^Vacant$|not stated|current charge \(No\.\)/i.test(h)) return v > 0 ? 'cw' : '';
+  if (/SHORT|NOT DEPOSITED|Not deposited|absent without|Dangerous/i.test(h)) return v > 0 ? 'cb' : '';
+  if (/Difference/i.test(h)) return v < 0 ? 'cb' : '';
+  return '';
+}
+
+V.reports = () => `<div class="card"><h2>Reports</h2><p class="muted">Built from the data institutions enter. ${role() === 'SCHOOL' ? 'Each report shows your institution.' : 'Each report covers your area; choose Halqa and level inside a report.'}</p>
+  <input type="search" id="rq" class="search" placeholder="Find a report" autocomplete="off"></div><div id="rcat"><p class="muted">${navigator.onLine ? 'Loading…' : ''}</p></div>`;
 BIND.reports = async () => {
   let list = LS.get('reports_list', null);
   if (navigator.onLine) { try { const j = await api('reportList', {}); if (j.ok) { list = j.reports; LS.set('reports_list', list); } } catch (e) { } }
-  if (!list) { $('#rnote').textContent = 'Reports need one connection to the internet first.'; return; }
-  let cur = LS.get('r_id', list[0].id);
-  const draw = async () => {
-    $('#rp').innerHTML = list.map(r => `<button class="${r.id === cur ? 'on' : ''}" data-id="${r.id}">${esc(r.title)}</button>`).join('');
-    $('#rp').querySelectorAll('button').forEach(b => b.onclick = () => { cur = b.dataset.id; LS.set('r_id', cur); draw(); });
-    const f = { id: cur, halqa: $('#rh') ? $('#rh').value : '', level: $('#rl') ? $('#rl').value : '' };
-    LS.set('r_halqa', f.halqa); LS.set('r_level', f.level);
-    const ck = 'rep_' + S.user.code + '_' + cur + '_' + f.halqa + '_' + f.level;
-    let r = LS.get(ck, null);
-    if (navigator.onLine) { $('#rnote').textContent = 'Loading…'; try { const j = await api('report', f); if (j.ok) { r = j; r.at = now_(); try { LS.set(ck, r); } catch (e) { } } } catch (e) { } }
-    if (!r) { $('#rnote').textContent = 'Not available offline yet.'; $('#rt').innerHTML = ''; return; }
-    REP.cur = r;
-    $('#rnote').textContent = r.note + (navigator.onLine ? '' : ` · offline copy from ${r.at}`);
-    $('#rtitle').textContent = r.title;
-    const num = v => typeof v === 'number';
-    // a total row for columns that are counts or rupees
-    const SUMMABLE = /sanctioned|filled|vacant|excess|of filled|held on current|expected|collected|deposited|short|not deposited|students|enrolled|boys|girls|admitted|left last|dropouts|orphans|disability|with b-form|annual fund|recorded|difference|opening|^ece$|^[ivx]+$|days|present|absent|late|leave|early|marked/i;
-    const tot = r.head.map((h, j) => SUMMABLE.test(h) && !/bps|%|rate|reason|halqa|level|designation/i.test(h) && r.rows.some(x => typeof x[j] === 'number') ? r.rows.reduce((a, x) => a + (typeof x[j] === 'number' ? x[j] : 0), 0) : null);
-    const totRow = r.rows.length > 1 && tot.some(v => v !== null) ? `<tfoot><tr>${tot.map((v, j) => `<td class="num">${j === 0 ? 'Total' : v === null ? '' : Math.round(v)}</td>`).join('')}</tr></tfoot>` : '';
-    $('#rt').innerHTML = `<thead><tr>${r.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${r.rows.slice(0, 1500).map(row => `<tr>${row.map(v => `<td class="${num(v) ? 'num' : ''}">${esc(dmy(v))}</td>`).join('')}</tr>`).join('')}</tbody>${totRow}`;
-    $('#rcount').textContent = `${r.count} rows${r.rows.length > 1500 ? ' (first 1,500 shown; download CSV for all)' : ''}${r.truncated ? ' · narrow the filters for the complete list' : ''}`;
+  if (!list) { $('#rcat').innerHTML = '<div class="card"><p class="muted">Reports need one connection to the internet first.</p></div>'; return; }
+  const draw = () => {
+    const w = $('#rq').value.toLowerCase().trim();
+    const f = list.filter(r => !w || (r.title + ' ' + ((RMETA[r.id] || {}).d || '')).toLowerCase().includes(w));
+    $('#rcat').innerHTML = RGROUPS.map((g, gi) => { const items = f.filter(r => ((RMETA[r.id] || { g: 5 }).g) === gi); return items.length ? `<section class="rgroup"><h3>${g}</h3><div class="rcards">${items.map(r =>
+      `<button class="rcard" data-id="${r.id}"><b>${esc(r.title)}</b><span>${esc((RMETA[r.id] || {}).d || '')}</span></button>`).join('')}</div></section>` : ''; }).join('') || '<div class="card"><p class="muted">No report matches.</p></div>';
+    $('#rcat').querySelectorAll('.rcard').forEach(b => b.onclick = () => go('report', { id: b.dataset.id }));
   };
-  if ($('#rh')) { $('#rh').onchange = draw; $('#rl').onchange = draw; }
-  draw();
+  $('#rq').oninput = draw; draw();
+};
+
+const REP = { cur: null, rows: [],
+  csv() { if (!REP.cur) return; const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const txt = [REP.cur.head].concat(REP.rows.map(r => r.map(dmy))).map(r => r.map(q).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + txt], { type: 'text/csv' })); a.download = (REP.cur.title + ' ' + today()).replace(/[^\w\- ]+/g, '') + '.csv'; a.click(); } };
+V.report = arg => { const m = RMETA[arg.id] || {}, t = ((LS.get('reports_list', []) || []).find(r => r.id === arg.id) || {}).title || 'Report';
+  const chips = (id, list, cur) => `<div class="seg fchips" id="${id}"><button class="${cur ? '' : 'on'}" data-v="">All</button>${list.map(x => `<button class="${cur === x ? 'on' : ''}" data-v="${x}">${x.replace('Higher Secondary', 'HSS')}</button>`).join('')}</div>`;
+  return `<div class="card noprint rtop"><h2 id="rtitle">${esc(t)}</h2><p class="muted">${esc(m.d || '')}</p>
+  ${role() !== 'SCHOOL' ? chips('rh', HALQAS, LS.get('r_halqa', '')) + chips('rl', LEVELS, LS.get('r_level', '')) : ''}
+  <div class="kfig" id="rk"></div>
+  <div class="rsearch"><input type="search" id="rs" class="search" placeholder="Search this report" autocomplete="off"><span class="rbtn"><button class="btn alt" onclick="REP.csv()">CSV</button><button class="btn alt" onclick="window.print()">Print</button></span></div></div>
+  <div class="card rprint"><h3 class="ponly" id="rtitle2">${esc(t)}</h3><div class="rwrap"><table class="rtable" id="rt"><tbody><tr><td class="muted">${navigator.onLine ? 'Loading…' : ''}</td></tr></tbody></table></div>
+  <p class="muted" id="rcount"></p><p class="muted rnote" id="rnote"></p></div>`; };
+BIND.report = async arg => {
+  const meta = RMETA[arg.id] || {};
+  let sortJ = -1, sortDir = 1, r = null;
+  const load = async () => {
+    const f = { id: arg.id, halqa: role() !== 'SCHOOL' ? LS.get('r_halqa', '') : '', level: role() !== 'SCHOOL' ? LS.get('r_level', '') : '' };
+    const ck = 'rep_' + S.user.code + '_' + f.id + '_' + f.halqa + '_' + f.level;
+    r = LS.get(ck, null);
+    if (navigator.onLine) { $('#rcount').textContent = 'Loading…'; try { const j = await api('report', f); if (j.ok) { r = j; r.at = now_(); try { LS.set(ck, r); } catch (e) { } } else { r = null; $('#rt').innerHTML = `<tbody><tr><td><div class="msg w">${esc(j.error)}</div></td></tr></tbody>`; $('#rk').innerHTML = ''; $('#rcount').textContent = ''; return; } } catch (e) { } }
+    if (!r) { $('#rt').innerHTML = '<tbody><tr><td class="muted">Not available offline yet.</td></tr></tbody>'; $('#rcount').textContent = ''; return; }
+    REP.cur = r; $('#rtitle').textContent = $('#rtitle2').textContent = r.title; $('#rnote').textContent = r.note + (r.at ? ` · updated ${dmy(r.at.slice(0, 10))} ${r.at.slice(11)}` : '') + (navigator.onLine ? '' : ' · offline copy');
+    paint();
+  };
+  const paint = () => {
+    const words = ($('#rs').value || '').toLowerCase().split(/\s+/).filter(Boolean);
+    let rows = r.rows.filter(x => !words.length || words.every(w => x.some(v => String(dmy(v)).toLowerCase().includes(w))));
+    if (sortJ >= 0) rows = rows.slice().sort((a, b) => { const x = a[sortJ], y = b[sortJ]; return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })) * sortDir; });
+    REP.rows = rows;
+    $('#rk').innerHTML = repKeys(r, rows, meta).map(([l, v]) => `<div><b>${esc(fmtN(v))}</b><span>${esc(l)}</span></div>`).join('');
+    const SUMMABLE = /sanctioned|filled|vacant|excess|of filled|held on current|expected|collected|deposited|short|not deposited|students|enrolled|boys|girls|admitted|left last|dropouts|orphans|disability|with b-form|annual fund|recorded|difference|opening|^ece$|^[ivx]+$|days|present|absent|late|leave|early|marked|appeared|passed|honorarium|meetings/i;
+    const tot = r.head.map((h, j) => SUMMABLE.test(h) && !/bps|%|rate|reason|halqa|level|designation|month|updated/i.test(h) && rows.some(x => typeof x[j] === 'number') ? rows.reduce((a, x) => a + (typeof x[j] === 'number' ? x[j] : 0), 0) : null);
+    const totRow = rows.length > 1 && tot.some(v => v !== null) ? `<tfoot><tr>${tot.map((v, j) => `<td class="num">${j === 0 ? 'Total' : v === null ? '' : fmtN(v)}</td>`).join('')}</tr></tfoot>` : '';
+    $('#rt').innerHTML = `<thead><tr>${r.head.map((h, j) => `<th data-j="${j}" class="${j === sortJ ? (sortDir > 0 ? 'asc' : 'desc') : ''}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 1500).map(row =>
+      `<tr>${row.map((v, j) => `<td class="${typeof v === 'number' ? 'num ' : ''}${cueOf(r.head[j], v)}">${esc(typeof v === 'number' ? fmtN(v) : dmy(v))}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${r.head.length}" class="muted">No row matches.</td></tr>`}</tbody>${totRow}`;
+    $('#rt').querySelectorAll('th').forEach(th => th.onclick = () => { const j = Number(th.dataset.j); sortDir = sortJ === j ? -sortDir : (r.rows.some(x => typeof x[j] === 'number') ? -1 : 1); sortJ = j; paint(); });
+    $('#rcount').textContent = `${rows.length === r.rows.length ? rows.length + ' rows' : rows.length + ' of ' + r.rows.length + ' rows'}${rows.length > 1500 ? ' (first 1,500 shown; CSV has all)' : ''}${r.truncated ? ' · narrow the filters for the complete list' : ''}. Tap a column heading to sort.`;
+  };
+  ['rh', 'rl'].forEach(id => { const el = $('#' + id); if (!el) return; el.querySelectorAll('button').forEach(b => b.onclick = () => {
+    el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); LS.set(id === 'rh' ? 'r_halqa' : 'r_level', b.dataset.v); load(); }); });
+  $('#rs').oninput = () => r && paint();
+  load();
 };
 function now_() { return new Date().toISOString().slice(0, 16).replace('T', ' '); }
 

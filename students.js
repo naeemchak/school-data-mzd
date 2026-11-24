@@ -67,7 +67,7 @@ BIND.students = () => {
     $('#scls').innerHTML = `<button class="${cls === '' ? 'on' : ''}" data-c="">All ${all.length}</button>` + classes.map(c => `<button class="${cls === c ? 'on' : ''}" data-c="${c}">${c} <small>${all.filter(s => s.class === c).length}</small></button>`).join('');
     $('#scls').querySelectorAll('button').forEach(b => b.onclick = () => { cls = b.dataset.c; LS.set('s_cls_' + S.emis, cls); draw(); });
     const list = all.filter(s => (!cls || q || s.class === cls) && (!q || (s.name + ' ' + s.father_name + ' ' + s.adm_no + ' ' + (s.roll_no || '')).toLowerCase().includes(q)));
-    if ($('#scount')) $('#scount').textContent = `${all.length} enrolled · ${all.filter(s => s.gender === 'Female').length} girls · ${all.filter(s => s.bform).length} with B-Form`;
+    if ($('#scount')) $('#scount').textContent = `${all.length} enrolled · ${all.filter(s => s.gender !== 'Female').length} boys · ${all.filter(s => s.gender === 'Female').length} girls · ${all.filter(s => s.bform).length} with B-Form`;
     $('#sl').innerHTML = list.slice(0, 400).map(s => `<div class="it tap" onclick="go('student',{mode:'edit',adm_no:'${esc(s.adm_no)}'})"><div class="grow"><b>${esc(s.name)}</b> <span class="muted">s/o ${esc(s.father_name)}</span>
       <div class="sub">Adm. ${esc(s.adm_no)} · Class ${esc(s.class)}${s.section ? '-' + esc(s.section) : ''}${s.roll_no ? ' · Roll ' + esc(s.roll_no) : ''}${s.name_ur ? ' · <span class="ur2">' + esc(s.name_ur) + '</span>' : ''}</div></div>
       ${s._pending ? '<span class="badge w">Sending</span>' : ''}<span class="chev">›</span></div>`).join('') || (all.length ? '<p class="muted">No match.</p>' : '');
@@ -80,7 +80,7 @@ BIND.students = () => {
 V.student = arg => {
   const d = D(); if (!d) return noData();
   const isNew = arg.mode === 'new';
-  const s = isNew ? Object.assign({ adm_no: REG.nextAdm(), adm_date: today(), gender: 'Male', religion: 'Islam', nationality: 'Pakistani', prev_type: PREV_TYPES[0], orphan: 'No', disability: 'None', class: '' }, arg.prefill || {})
+  const s = isNew ? Object.assign({ adm_no: REG.nextAdm(), adm_date: today(), gender: '', religion: 'Islam', nationality: 'Pakistani', prev_type: PREV_TYPES[0], orphan: 'No', disability: 'None', class: '' }, arg.prefill || {})
     : (REG.students().find(x => x.adm_no === arg.adm_no) || ((REG.get() || {}).left || []).find(x => x.adm_no === arg.adm_no));
   if (!s) return '<div class="card"><p class="muted">Student not found in the register on this phone.</p></div>';
   const left = s.status === 'Left';
@@ -96,11 +96,13 @@ V.student = arg => {
     <div class="row"><div>${sel('class', 'Class *', classes, '— choose —')}</div><div>${f('section', 'Section')}</div><div>${f('roll_no', 'Roll No.')}</div></div>
     ${['High', 'Higher Secondary'].includes(lv) ? f('group', 'Group / electives (IX–XII)') : ''}
     <h3>Student</h3>
+    <label>Boy or girl *</label><input type="hidden" name="gender" value="${esc(s.gender || '')}">
+    <div class="gsel" id="gsel">${[['Male', 'Boy', 'لڑکا'], ['Female', 'Girl', 'لڑکی']].map(([v, l, u]) => `<button type="button" data-v="${v}" class="${s.gender === v ? 'on' : ''}">${l}<span>${u}</span></button>`).join('')}</div>
     ${f('name', 'Name (English) *', 'style="text-transform:uppercase"')}
     <label>نام (اردو)</label><input name="name_ur" class="ur2" dir="rtl" lang="ur" value="${esc(s.name_ur || '')}">
     ${f('father_name', "Father's name (English) *", 'style="text-transform:uppercase"')}
     <label>والد کا نام (اردو)</label><input name="father_name_ur" class="ur2" dir="rtl" lang="ur" value="${esc(s.father_name_ur || '')}">
-    <div class="row"><div>${f('dob', 'Date of birth *', 'type="date"')}</div><div>${sel('gender', 'Gender *', ['Male', 'Female'])}</div></div>
+    ${f('dob', 'Date of birth *', 'type="date"')}
     <div class="row"><div>${f('bform', 'B-Form / CRC No.', 'inputmode="numeric" placeholder="xxxxx-xxxxxxx-x"')}</div><div>${sel('religion', 'Religion', RELIGIONS)}</div></div>
     <div class="row"><div>${sel('mother_tongue', 'Mother tongue', TONGUES, '—')}</div><div>${f('nationality', 'Nationality')}</div></div>
     <div class="row"><div>${sel('orphan', 'Orphan', ['No', 'Yes'])}</div><div>${sel('disability', 'Disability', DISABILITIES)}</div></div>
@@ -127,6 +129,7 @@ BIND.student = arg => {
   const q = n => form.querySelector(`[name="${n}"]`);
   q('prev_type').onchange = () => { $('#prevw').hidden = q('prev_type').value !== PREV_TYPES[1]; };
   $('#docs').querySelectorAll('button').forEach(b => b.onclick = () => b.classList.toggle('on'));
+  $('#gsel').querySelectorAll('button').forEach(b => b.onclick = () => { q('gender').value = b.dataset.v; $('#gsel').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#gsel').classList.remove('need'); });
   const cnicFmt = v => { const d = v.replace(/\D/g, ''); return d.length === 13 ? d.slice(0, 5) + '-' + d.slice(5, 12) + '-' + d.slice(12) : v.trim(); };
   form.onsubmit = e => {
     e.preventDefault();
@@ -134,6 +137,7 @@ BIND.student = arg => {
     s.docs = [...$('#docs').querySelectorAll('button.on')].map(b => b.dataset.v).join(', ');
     s.name = s.name.toUpperCase().replace(/\s+/g, ' '); s.father_name = s.father_name.toUpperCase().replace(/\s+/g, ' '); s.adm_no = s.adm_no.toUpperCase();
     s.bform = cnicFmt(s.bform); s.father_cnic = cnicFmt(s.father_cnic);
+    if (!s.gender) { $('#gsel').classList.add('need'); $('#gsel').scrollIntoView({ block: 'center' }); return toast('Choose boy or girl'); }
     for (const k of ['adm_no', 'adm_date', 'name', 'father_name', 'dob', 'class']) if (!s[k]) return toast('Please fill: ' + q(k).previousElementSibling.textContent.replace(' *', ''));
     const age = (new Date(s.adm_date) - new Date(s.dob)) / 31557600000;
     if (!(age >= 2.5 && age <= 30)) return toast('Check the date of birth: age at admission would be ' + Math.round(age) + ' years');

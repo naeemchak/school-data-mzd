@@ -53,6 +53,11 @@ header h1{cursor:pointer}
 .grp{margin:14px 0 6px;display:flex;justify-content:space-between;align-items:baseline;cursor:pointer}
 .grp h3{margin:0;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.03em}.grp span{font-size:12.5px;color:var(--mute);display:inline-flex;align-items:center;gap:4px}.grp .chev{font-style:normal;display:inline-block;transition:transform .15s}.grp.open .chev{transform:rotate(90deg)}
 .seg{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+.gsel{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 12px;border-radius:14px;transition:box-shadow .2s}
+.gsel button{font:inherit;font-weight:600;font-size:16px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.gsel button span{font-family:Naskh,serif;font-weight:400;color:var(--mute)}
+.gsel button.on{background:var(--brand);border-color:var(--brand);color:#fff}.gsel button.on span{color:#d9e8df}
+.gsel.need{box-shadow:0 0 0 3px #e0a12a}
 .seg button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer}
 .seg button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
 @media (prefers-color-scheme:dark){.seg button.on{color:#0b1a10}}
@@ -334,6 +339,26 @@ details.att{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}de
 @page certland{size:A4 landscape;margin:0}
 @media print{#certs{page:certland}.certp{box-shadow:none;margin:0}.certp:last-child{break-after:auto;page-break-after:auto}}
 @media (max-width:900px){.certp{transform:scale(.33);transform-origin:top left;margin-bottom:-138mm}}
+
+/* v4G.1 approvals and reports */
+input.search{width:100%;margin:6px 0 4px;padding:11px 14px 11px 38px;border-radius:12px;background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2356665e' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 4 4'/%3E%3C/svg%3E") no-repeat 13px center}
+.age{font-size:12px;color:var(--mute);white-space:nowrap;margin:0 4px}.age.late{color:var(--warn);background:var(--warnbg);padding:2px 8px;border-radius:999px;font-weight:600}
+.rgroup{margin:18px 2px 6px}.rgroup h3{margin:0 0 8px;font-size:13px;color:var(--mute);font-weight:600;letter-spacing:.02em}
+.rcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.rcard{font:inherit;text-align:left;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:12px;padding:14px 16px;cursor:pointer;display:flex;flex-direction:column;gap:4px;color:var(--ink)}
+.rcard b{font-size:15.5px;font-weight:600}.rcard span{font-size:13px;color:var(--mute);line-height:1.4}.rcard:active{background:var(--brand2)}
+.fchips{margin:4px 0}.fchips button{padding:5px 11px}
+.kfig{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0 6px}
+.kfig div{background:var(--brand2);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column}.kfig b{font-size:26px;font-weight:600;letter-spacing:-.02em;color:var(--brand);line-height:1.1}.kfig span{font-size:12.5px;color:var(--mute);margin-top:3px}
+.rsearch{display:flex;gap:8px;align-items:center}.rsearch input{flex:1;margin:0}.rsearch .rbtn .btn{margin:0;padding:10px 14px}
+.rtable th{cursor:pointer;user-select:none}.rtable th.asc:after{content:' ▲';font-size:9px}.rtable th.desc:after{content:' ▼';font-size:9px}
+.rtable th:first-child,.rtable td:first-child{position:sticky;left:0;background:var(--card);z-index:1}.rtable th:first-child{z-index:2}
+.rtable tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--brand2) 35%,var(--card))}
+.rtable td.cw{color:var(--warn);font-weight:600}.rtable td.cb{color:var(--bad);font-weight:600}
+.rnote{font-size:12.5px}.ponly{display:none}
+@page repland{size:A4 landscape;margin:10mm}
+@media print{.rprint{page:repland}.rprint .ponly{display:block;margin:0 0 6px}.rtable{font-size:9pt;white-space:normal}.rtable th:first-child,.rtable td:first-child{position:static}.rtable th{position:static}}
+.fixbox{margin-top:22px;padding:14px 16px;border:1px dashed var(--line);border-radius:12px}.fixbox h3{margin-top:0}
 </style>
 </head>
 <body>
