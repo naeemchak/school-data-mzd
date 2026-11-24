@@ -359,6 +359,10 @@ input.search{width:100%;margin:6px 0 4px;padding:11px 14px 11px 38px;border-radi
 @page repland{size:A4 landscape;margin:10mm}
 @media print{.rprint{page:repland}.rprint .ponly{display:block;margin:0 0 6px}.rtable{font-size:9pt;white-space:normal}.rtable th:first-child,.rtable td:first-child{position:static}.rtable th{position:static}}
 .fixbox{margin-top:22px;padding:14px 16px;border:1px dashed var(--line);border-radius:12px}.fixbox h3{margin-top:0}
+
+/* view-only logins (Minister, Secretary, DPI) */
+body.viewer #app:before{content:'View-only access · data can be seen, not changed or approved';display:block;margin:10px 12px 0;padding:8px 14px;border-radius:10px;background:var(--brand2);color:var(--brand);font-size:13px;font-weight:600}
+body.viewer .decide,body.viewer .fixbox,body.viewer #cfs{display:none!important}
 </style>
 </head>
 <body>

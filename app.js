@@ -71,6 +71,7 @@ async function api(action, payload) {
 }
 const outbox = () => LS.get('outbox', []);
 function queue(action, payload, label) {
+  if (role() === 'VIEWER' && action !== 'changePin') { toast('View-only access: nothing can be changed from this login'); return; }
   const ob = outbox(); ob.push({ client_id: uid(), action, payload, label, ts: new Date().toISOString() }); LS.set('outbox', ob);
   toast(navigator.onLine ? 'Saved. Sending…' : 'Saved on phone. Will be sent when internet is available.');
   showSync(); sync();
@@ -128,7 +129,9 @@ async function refreshBoot() {
   if (!navigator.onLine) return;
   try { const j = await api('bootstrap', {}); if (j.ok) { S.boot = j; LS.set('boot', j); if (S.view === 'home') render(); } } catch (e) { }
 }
-const inst = () => (S.boot && S.boot.institutions || []).find(i => i.emis === S.emis) || (D() || {}).inst || {};
+// the institution's full record (downloaded with its data) wins over the short sign-in list, so fields such as the focal person always show
+const inst = () => { const b = (S.boot && S.boot.institutions || []).find(i => i.emis === S.emis), d = (D() || {}).inst;
+  return d && d.emis === S.emis ? Object.assign({}, b || {}, d) : b || d || {}; };
 const role = () => S.user && S.user.role;
 
 /* ---------------- navigation ---------------- */
@@ -154,6 +157,7 @@ function render() {
   NAV.close();
   if (!S.token) { document.body.classList.remove('wide', 'nav'); $('#side').hidden = true; $('#menu').hidden = true; $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
   document.body.classList.add('nav'); $('#side').hidden = false; $('#menu').hidden = false;
+  document.body.classList.toggle('viewer', role() === 'VIEWER');
   document.body.classList.toggle('wide', ['home', 'reports', 'report', 'institutions', 'search', 'review', 'approvals', 'attmonth', 'timetable', 'ttprint', 'impl', 'cert'].includes(S.view));
   $('#back').hidden = !S.stack.length;
   const i = inst();
@@ -971,7 +975,7 @@ V.settings = () => {
 };
 BIND.settings = () => {
   if ($('#hs')) $('#hs').onclick = () => {
-    const f = formData($('#hf')); f.emis = S.emis;
+    const f = formData($('#hf')); Object.keys(f).forEach(k => { if (!String(f[k]).trim()) delete f[k]; }); f.emis = S.emis;
     for (const k of ['head_mobile', 'focal_mobile']) if (f[k] && !/^0\d{10}$/.test(f[k].replace(/\D/g, ''))) return toast('Mobile numbers should be 11 digits starting with 0');
     queue('updateHead', f, 'Head and focal person');
     const b = S.boot.institutions.find(x => x.emis === S.emis); if (b) Object.assign(b, f); LS.set('boot', S.boot);
