@@ -232,7 +232,7 @@ BIND.slc = () => { $('#slcb').onclick = async () => {
 
 /* ---------- bulk upload ---------- */
 V.simport = () => `<div class="card"><h2>Upload students</h2>
-  <ol class="steps"><li>Download the sheet and open it in Excel or Google Sheets.</li><li>Fill one row per enrolled child, copying the admission number from the register. Dates as <b>YYYY-MM-DD</b>; class as ECE, I, II … X. Urdu names may be typed in the Urdu columns.</li><li>Save as <b>CSV UTF-8</b> (or keep .xlsx) and choose the file here. Rows with mistakes are listed; the rest are saved.</li></ol>
+  <ol class="steps"><li>Download the sheet and open it in Excel or Google Sheets.</li><li>Fill one row per enrolled child, copying the admission number from the register. Dates best as <b>2018-03-05</b> (year-month-day); 05-03-2018 (day first) and Excel date cells are also read; class as ECE, I, II … X. Urdu names may be typed in the Urdu columns.</li><li>Save as <b>CSV UTF-8</b> (or keep .xlsx) and choose the file here. Rows with mistakes are listed; the rest are saved.</li></ol>
   <button class="btn alt" onclick="STU.template()">Download the sheet</button>
   <label>Choose the filled file</label><input type="file" id="sfile" accept=".csv,.xlsx,.xls">
   <div id="sprev"></div></div>`;
@@ -242,7 +242,9 @@ BIND.simport = () => {
     let rows;
     try { rows = /\.xlsx?$/i.test(file.name) ? await STU.readXlsx(file) : STU.parseCsv(await file.text()); } catch (e) { return toast('Could not read the file: ' + e.message); }
     const have = {}; REG.students().forEach(s => { have[s.adm_no] = 1; });
-    const probs = rows.map((r, k) => { const m = []; ['adm_no', 'adm_date', 'name', 'father_name', 'gender', 'dob', 'class'].forEach(c => { if (!r[c]) m.push(c.replace('_', ' ')); }); if (r.adm_no && have[String(r.adm_no).toUpperCase()]) m.push('already in register'); return m.length ? { row: k + 2, adm_no: r.adm_no, name: r.name, error: m.join(', ') } : null; }).filter(Boolean);
+    const probs = rows.map((r, k) => { const m = []; ['adm_no', 'adm_date', 'name', 'father_name', 'gender', 'dob', 'class'].forEach(c => { if (!r[c]) m.push(c.replace('_', ' ')); }); if (r.adm_no && have[String(r.adm_no).toUpperCase()]) m.push('already in register');
+      [['adm_date', 'date of admission'], ['dob', 'date of birth']].forEach(([c, l]) => { if (/^\?/.test(r[c] || '')) m.push(l + ' not understood: ' + r[c].slice(1) + ' (write as 2018-03-05)'); });
+      if (r.mobile && !/^0\d{10}$/.test(r.mobile)) m.push('mobile should be 11 digits, e.g. 03001234567'); return m.length ? { row: k + 2, adm_no: r.adm_no, name: r.name, error: m.join(', ') } : null; }).filter(Boolean);
     $('#sprev').innerHTML = `<p><b>${rows.length}</b> rows read${probs.length ? `, <b>${probs.length}</b> with problems` : ''}.</p>
       ${probs.length ? `<div class="scroll"><table><tr><th>Row</th><th>Adm.</th><th>Name</th><th>Problem</th></tr>${probs.slice(0, 30).map(p => `<tr><td>${p.row}</td><td>${esc(p.adm_no)}</td><td>${esc(p.name)}</td><td>${esc(p.error)}</td></tr>`).join('')}</table></div>` : ''}
       <button class="btn" id="sgo" ${navigator.onLine ? '' : 'disabled'}>Save ${rows.length - probs.length} students</button>${navigator.onLine ? '' : '<p class="muted">Uploading needs internet.</p>'}<p class="muted" id="smsg"></p>`;
@@ -279,11 +281,34 @@ const STU = {
     const head = (lines[0] || []).map(STU.mapHead); if (!head.includes('adm_no') || !head.includes('name')) throw new Error('the first row must be the headings from the downloaded sheet');
     return lines.slice(1).filter(r => r.some(v => String(v).trim()) && !/^EXAMPLE/i.test(String(r[head.indexOf('adm_no')] || ''))).map(r => { const o = {}; head.forEach((k, j) => { if (k) o[k] = STU.cell(r[j], k); }); return o; });
   },
-  cell(v, k) { if (v instanceof Date) return v.toISOString().slice(0, 10); v = String(v == null ? '' : v).trim(); if ((k === 'dob' || k === 'adm_date') && /^\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4}$/.test(v)) { const p = v.split(/[-\/.]/); return `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`; } if (k === 'class') v = v.toUpperCase().replace(/^CLASS\s*/, '').replace(/^0+(\d)/, '$1'); if (k === 'class' && /^\d+$/.test(v)) v = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][Number(v)] || v; if (k === 'class' && /^(ECE|KG|PREP|NURSERY|KACHI|PRE)/i.test(v)) v = 'ECE'; return v; },
+  /** a date as written in a sheet → yyyy-mm-dd, or '' if it cannot be understood.
+      Accepts 2018-03-05; Excel's day numbers (43164); day-first 05-03-2018, 5/3/2018, 05.03.18; a month-first date is recognised only when the day is above 12 (3/15/2018) */
+  date(v) {
+    if (v instanceof Date) return isNaN(v) ? '' : `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+    v = String(v == null ? '' : v).trim(); if (!v) return '';
+    const ok = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : ''; };
+    let a;
+    if ((a = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v))) return ok(+a[1], +a[2], +a[3]);
+    if (/^\d{4,5}(\.\d+)?$/.test(v)) { const n = Math.floor(Number(v)); if (n > 3000 && n < 80000) { const t = new Date(Date.UTC(1899, 11, 30) + n * 864e5); return t.toISOString().slice(0, 10); } return ''; }   // Excel day number
+    if ((a = /^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})$/.exec(v))) {
+      let d = +a[1], m = +a[2], y = +a[3];
+      if (a[3].length === 2) { const cy = new Date().getFullYear() % 100; y += y <= cy ? 2000 : 1900; }
+      if (m > 12 && d <= 12) [d, m] = [m, d];          // clearly month-first (US): 3/15/2018
+      return ok(y, m, d);
+    }
+    return '';
+  },
+  cell(v, k) {
+    if (k === 'dob' || k === 'adm_date') { const d = STU.date(v); return d || (v == null ? '' : '?' + String(v).trim()); }   // '?' marks a date not understood, shown in the preview
+    v = String(v == null ? '' : v).trim();
+    if (k === 'mobile' && v) { let m = v.replace(/\D/g, ''); if (/^92\d{10}$/.test(m)) m = '0' + m.slice(2); else if (/^3\d{9}$/.test(m)) m = '0' + m; v = m; }   // Excel drops the leading 0
+    if ((k === 'bform' || k === 'father_cnic') && /^\d{13}(\.0+)?$/.test(v)) v = v.replace(/\.0+$/, '');
+    if (k === 'adm_no' || k === 'roll_no') v = v.replace(/\.0+$/, '');
+    if (k === 'class') v = v.toUpperCase().replace(/^CLASS\s*/, '').replace(/^0+(\d)/, '$1'); if (k === 'class' && /^\d+$/.test(v)) v = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][Number(v)] || v; if (k === 'class' && /^(ECE|KG|PREP|NURSERY|KACHI|PRE)/i.test(v)) v = 'ECE'; return v; },
   async readXlsx(file) {
     if (!window.XLSX) { await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = () => rej(new Error('could not load the Excel reader; save the file as CSV UTF-8 instead')); document.head.appendChild(s); }); }
-    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
-    const ws = wb.Sheets[wb.SheetNames[0]]; const lines = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });            // dates arrive as Excel day numbers and are converted in STU.date (no time-zone shift)
+    const ws = wb.Sheets[wb.SheetNames[0]]; const lines = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
     return STU.rowsFrom(lines);
   }
 };

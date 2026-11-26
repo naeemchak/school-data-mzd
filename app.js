@@ -757,6 +757,7 @@ function expected(d, m) {
   const meta = S.boot.meta, rows = d.enrolment.filter(r => r.month === m);
   const ex = { tuition: 0, admission: 0, annual_fund: 0, scout_fund: 0 };
   rows.forEach(r => {
+    if (r.class === 'ECE') return;   // no fee in principle (same rule as the server)
     const i = CLASSES.indexOf(r.class), lv = i <= 5 ? 'Primary' : i <= 8 ? 'Middle' : i <= 10 ? 'High' : 'Inter', f = meta.fees[lv];
     const n = Number(r.boys || 0) + Number(r.girls || 0), a = Number(r.new_admissions || 0);
     ex.tuition += n * f.tuition; ex.admission += a * f.admission;
@@ -765,15 +766,30 @@ function expected(d, m) {
   });
   return { ex, has: rows.length > 0 };
 }
+/** the notified rates, shown to every institution so heads can check what is due */
+function feeRatesCard() {
+  const m = S.boot.meta, f = m.fees, n = m.feeNotes || {}, sc = m.scout || {};
+  const band = [['ECE / Kachi', null], ['Primary<br><small>Classes I–V</small>', 'Primary'], ['Middle<br><small>Classes VI–VIII</small>', 'Middle'], ['High<br><small>Classes IX–X</small>', 'High'], ['Higher Secondary<br><small>Classes XI–XII</small>', 'Inter']];
+  return `<div class="card feerates"><h2>Notified fee rates</h2><div class="ur">منظور شدہ فیس کی شرح</div>
+    <table class="ftab"><thead><tr><th>Classes</th><th class="num">Tuition<br><small>a month</small></th><th class="num">Admission<br><small>once</small></th><th class="num">Annual fund<br><small>a year</small></th><th class="num">Scout fund<br><small>a month</small></th></tr></thead><tbody>
+    ${band.map(([l, k]) => `<tr><td>${l}</td>${k ? `<td class="num">${f[k].tuition}</td><td class="num">${f[k].admission}</td><td class="num">${f[k].annual_fund}</td><td class="num">${k === 'Primary' ? '<small>III–V</small> ' + sc.low : k === 'Inter' ? sc.inter : sc.low}</td>` : '<td class="num">–</td><td class="num">–</td><td class="num">–</td><td class="num">–</td>'}</tr>`).join('')}</tbody></table>
+    <ul class="fnotes"><li>Rates go by <b>class</b>, in every institution: primary classes of a high school pay primary rates, and so on.</li>
+    <li><b>Tuition</b> every month from every enrolled student. <b>Admission fee</b> only from newly admitted students.</li>
+    <li><b>Annual fund</b> from every enrolled student at the start of the school year (March), and from children admitted later, with their admission fee.</li>
+    <li><b>Scout fund</b> shared 40% school, 10% DEO / District Scouts Commissioner, 50% provincial.</li>
+    <li>${esc(n.ece || 'ECE: no fee in principle.')}</li></ul>
+    <p class="muted">${esc(n.rates || '')}. Scout fund: ${esc(n.scout || '')}. All amounts in rupees.</p></div>`;
+}
 V.fees = () => {
   const d = D(); if (!d) return noData();
-  if (d.inst.level === 'Primary' && role() === 'SCHOOL') return '<div class="card"><h2>Fees</h2><p>Primary-school fees are collected, deposited and entered by the AEO.</p></div>';
+  if (d.inst.level === 'Primary' && role() === 'SCHOOL') return '<div class="card"><h2>Fees</h2><p>Primary-school fees are collected, deposited and entered by the AEO.</p></div>' + feeRatesCard();
   const months = recentMonths(3);
   const deps = d.deposits.slice().reverse().map(x => `<div class="it"><div class="grow"><b>Rs ${esc(x.amount)}</b> · ${esc(x.account)}<div class="sub">Challan ${esc(x.challan_no)}, ${esc(dmy(x.challan_date))} · for ${monthLabel(x.month)} · ${esc(x.status)}</div></div></div>`).join('');
   return `<div class="card" id="ff"><h2>Fee collection</h2><div class="ur">فیس کی وصولی</div>
   <label>Month</label><select id="fm">${opts(months.map(m => [m, monthLabel(m)]), months[0])}</select>
   <div id="fx"></div><button class="btn full" id="fs">Save collection</button></div>
   <div class="card" id="fo"></div>
+  ${feeRatesCard()}
   <div class="card"><h2>Deposits (challans)</h2><div id="fd"></div><button class="btn" onclick="go('deposit')">+ Add challan</button><div class="list">${deps || '<p class="muted">No deposit recorded.</p>'}</div></div>`;
 };
 BIND.fees = () => {
@@ -787,7 +803,7 @@ BIND.fees = () => {
         `<tr><td>${t}</td><td class="num">${ex[h]}</td><td><input data-h="${h}" value="${esc(col(h))}" inputmode="numeric" placeholder="0"></td></tr>`).join('')}</table>
       ${m === feeSession(m) ? `<p class="muted">${monthLabel(m)} is the first month of the school year: annual fund is due from every enrolled student.</p>` : `<p class="muted">Annual fund this month: only from children newly admitted (the whole school pays it in ${monthLabel(feeSession(m))}).</p>`}
       <label>Reason if collection differs from expected</label><input id="frm" value="${esc((saved[0] || {}).remark || '')}">
-      <p class="muted">Expected = enrolment × notified rates (no exemptions). Deposit due: A/C 101 Rs ${Number(col('tuition')) + Number(col('admission')) + Number(col('annual_fund'))};
+      <p class="muted">Expected = enrolment × notified rates (no exemptions; ECE not counted). Deposit due: A/C 101 Rs ${Number(col('tuition')) + Number(col('admission')) + Number(col('annual_fund'))};
       scout fund: school Rs ${Math.round(sc * .4)}, DEO / District Scouts Commissioner Rs ${Math.round(sc * .1)}, provincial Rs ${Math.round(sc * .5)}.</p>`;
   };
   const opening = () => {   // one-time: annual fund collected this school year before the app
@@ -1231,6 +1247,7 @@ const RMETA = {
   attendance: { g: 1, d: 'Staff and student attendance by institution, this month and last.', k: [['Staff present', 'avg%', 'Staff present %'], ['Students present', 'avg%', 'Student attendance %'], ['Late arrivals', 'sum', 'Late arrivals'], ['Absent without leave (staff-days)', 'sum', 'Absent without leave (staff-days)']] },
   attendance_staff: { g: 1, d: 'This month, employee by employee: days present, late, absent and on leave.', k: [['Employees', 'count'], ['Late arrivals', 'sum', 'Late arrivals'], ['Days absent without leave', 'sum', 'Days absent without leave']] },
   fees: { g: 2, d: 'Fees expected from enrolment, collected and deposited, month by month.', k: [['Expected (Rs)', 'sum', /^Expected/], ['Collected (Rs)', 'sum', /^Collected/], ['Short (Rs)', 'sum', 'SHORT COLLECTION (sum of heads)'], ['Not deposited, A/C 101 (Rs)', 'sum', 'NOT DEPOSITED A/C 101']] },
+  feerates: { g: 2, noTotal: true, d: 'Tuition, admission, annual fund and scout fund rates by class, with the notification.', k: [] },
   annualfund: { g: 2, d: 'Annual fund for the whole school year against what is due.', k: [['Due (Rs)', 'sum', 'Annual fund due'], ['Collected (Rs)', 'sum', /Collected before the app|Recorded in the app/], ['Difference (Rs)', 'sum', 'Difference (+ excess / - short)']] },
   results: { g: 3, d: 'Results by school, class and subject, in grade bands.', k: [['Appeared', 'sum', 'Appeared'], ['Passed', 'sum', 'Passed'], ['Pass rate', 'pct', ['Passed', 'Appeared']], ['Institutions', 'distinct', 'EMIS']] },
   results_summary: { g: 3, d: 'Pass rates by exam, class and subject across the area.', k: [['Appeared', 'sum', 'Appeared'], ['Passed', 'sum', 'Passed'], ['Pass rate', 'pct', ['Passed', 'Appeared']]] },
@@ -1312,7 +1329,7 @@ BIND.report = async arg => {
     $('#rk').innerHTML = repKeys(r, rows, meta).map(([l, v]) => `<div><b>${esc(fmtN(v))}</b><span>${esc(l)}</span></div>`).join('');
     const SUMMABLE = /sanctioned|filled|vacant|excess|of filled|held on current|expected|collected|deposited|short|not deposited|students|enrolled|boys|girls|admitted|left last|dropouts|orphans|disability|with b-form|annual fund|recorded|difference|opening|^ece$|^[ivx]+$|days|present|absent|late|leave|early|marked|appeared|passed|honorarium|meetings/i;
     const tot = r.head.map((h, j) => SUMMABLE.test(h) && !/bps|%|rate|reason|halqa|level|designation|month|updated/i.test(h) && rows.some(x => typeof x[j] === 'number') ? rows.reduce((a, x) => a + (typeof x[j] === 'number' ? x[j] : 0), 0) : null);
-    const totRow = rows.length > 1 && tot.some(v => v !== null) ? `<tfoot><tr>${tot.map((v, j) => `<td class="num">${j === 0 ? 'Total' : v === null ? '' : fmtN(v)}</td>`).join('')}</tr></tfoot>` : '';
+    const totRow = !meta.noTotal && rows.length > 1 && tot.some(v => v !== null) ? `<tfoot><tr>${tot.map((v, j) => `<td class="num">${j === 0 ? 'Total' : v === null ? '' : fmtN(v)}</td>`).join('')}</tr></tfoot>` : '';
     $('#rt').innerHTML = `<thead><tr>${r.head.map((h, j) => `<th data-j="${j}" class="${j === sortJ ? (sortDir > 0 ? 'asc' : 'desc') : ''}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 1500).map(row =>
       `<tr>${row.map((v, j) => `<td class="${typeof v === 'number' ? 'num ' : ''}${cueOf(r.head[j], v)}">${esc(typeof v === 'number' ? fmtN(v) : dmy(v))}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${r.head.length}" class="muted">No row matches.</td></tr>`}</tbody>${totRow}`;
     $('#rt').querySelectorAll('th').forEach(th => th.onclick = () => { const j = Number(th.dataset.j); sortDir = sortJ === j ? -sortDir : (r.rows.some(x => typeof x[j] === 'number') ? -1 : 1); sortJ = j; paint(); });
