@@ -37,7 +37,7 @@ const ATTC = {
   /** marked here: own staff not attached elsewhere, surplus staff attached here, Community Teachers */
   staff() { const d = D(); if (!d) return [];
     const emp = d.employees.filter(e => e.record_state !== 'Left' && !(e.attached_to && e.attached_to !== S.emis)).sort((a, b) => Number(b.post_bps || 0) - Number(a.post_bps || 0) || a.name.localeCompare(b.name));
-    return emp.concat((d.community || []).filter(c => c.status !== 'Returned' && !String(c.id).startsWith('tmp')).map(c => ({ cnic: 'CT:' + c.id, name: c.name, own_designation: 'Community Teacher', designation: 'Community Teacher', post_bps: 0 }))); },
+    return emp.concat((d.community || []).filter(c => c.status !== 'Returned' && !String(c.id).startsWith('tmp')).map(c => { const k = c.kind || 'Community Teacher', d = k === 'Community Teacher' ? k : (c.job || k); return { cnic: 'CT:' + c.id, name: c.name, own_designation: d, designation: d, post_bps: 0, kind: k }; })); },
   classes() { const g = {}; REG.students().forEach(s => { const k = s.class + '|' + (s.section || ''); (g[k] = g[k] || []).push(s); });
     return Object.keys(g).sort((a, b) => CLASSES.indexOf(a.split('|')[0]) - CLASSES.indexOf(b.split('|')[0]) || a.localeCompare(b)).map(k => ({ key: k, cls: k.split('|')[0], sec: k.split('|')[1], kids: g[k] })); }
 };
@@ -57,7 +57,7 @@ BIND.attendance = arg => {
     const mo = ATTC.month(m), day = (mo.daily || []).find(r => r.date === date) || {};
     const tm = ATTC.timings(date, i.level);
     const staff = ATTC.staff(), tr = (mo.teachers || []).filter(r => r.date === date && r.status);
-    const pres = tr.filter(r => r.status === 'Present'), late = pres.filter(r => Number(r.late_min) > 0).length, nodep = pres.filter(r => !r.departure).length;
+    const pres = tr.filter(r => r.status === 'Present'), half = tr.filter(r => r.status === 'Half leave').length, late = pres.filter(r => Number(r.late_min) > 0).length, nodep = tr.filter(r => (r.status === 'Present' || r.status === 'Half leave') && !r.departure).length;
     $('#ainfo').innerHTML = closedT ? `<div class="msg">${esc(closedT)}: no attendance is due.</div>`
       : day.closed ? `<div class="msg">Marked as closed: ${esc(day.closed)}. <a href="#" id="reopen">Undo</a></div>`
       : `<p class="muted">Assembly <b>${tm.assembly}</b> · closing <b>${tm.close}</b>${tm.friday ? ' (Friday)' : ''} · mark arrivals by <b>${a.cutoff}</b>${date < a.start ? `<br>Teacher attendance is required from ${dmy(a.start)}; marking before that is practice.` : ''}</p>`;
@@ -66,12 +66,12 @@ BIND.attendance = arg => {
     $('#abody').innerHTML = !working ? `<div class="card"><button class="btn alt" onclick="go('attmonth',{month:'${m}'})">Monthly register</button></div>` : `
       <div class="card"><div class="list">
         <div class="it tap" onclick="go('tatt',{date:'${date}'})"><div class="grow"><b>Teachers and staff</b>
-          <div class="sub">${tr.length ? `${tr.length} of ${staff.length} marked · ${pres.length} present${late ? ` · <span class="db-no">${late} late</span>` : ''}${nodep ? ` · ${nodep} departure${nodep > 1 ? 's' : ''} to record` : pres.length ? ' · departures recorded' : ''}` : `${staff.length} to mark`}</div></div>
+          <div class="sub">${tr.length ? `${tr.length} of ${staff.length} marked · ${pres.length} present${half ? ` · ${half} half leave` : ''}${late ? ` · <span class="db-no">${late} late</span>` : ''}${nodep ? ` · ${nodep} departure${nodep > 1 ? 's' : ''} to record` : pres.length ? ' · departures recorded' : ''}` : `${staff.length} to mark`}</div></div>
           <span class="badge ${tr.length === staff.length && !nodep ? 'o' : 'w'}">${tr.length === staff.length && !nodep ? 'Done' : tr.length ? 'In progress' : 'Not marked'}</span><span class="chev">›</span></div>
       </div></div>
       <div class="card"><h3>Students</h3>${closedS ? `<p class="muted">${esc(closedS)}: no student attendance.</p>` : !cls.length ? `<p class="muted">Register the students first; attendance is marked from the register.</p><button class="btn alt" onclick="go('students')">Open Students</button>`
         : `<div class="list">${cls.map(c => { const r = sr.find(x => x.class === c.cls && (x.section || '') === c.sec);
-          return `<div class="it tap" onclick="go('satt',{date:'${date}',cls:'${esc(c.key)}'})"><div class="grow"><b>Class ${esc(c.cls)}${c.sec ? '-' + esc(c.sec) : ''}</b><div class="sub">${r ? `${r.present} present · ${r.absent} absent${Number(r.leave) ? ' · ' + r.leave + ' on leave' : ''}` : c.kids.length + ' students'}</div></div>
+          return `<div class="it tap" onclick="go('satt',{date:'${date}',cls:'${esc(c.key)}'})"><div class="grow"><b>Class ${esc(c.cls)}${c.sec ? '-' + esc(c.sec) : ''}</b><div class="sub">${r ? `${r.present} present · ${r.absent} absent${Number(r.leave) ? ' · ' + r.leave + ' on leave' : ''}${Number(r.half) ? ' · ' + r.half + ' half day' : ''}` : c.kids.length + ' students'}</div></div>
             <span class="badge ${r ? 'o' : 'w'}">${r ? 'Done' : 'Not marked'}</span><span class="chev">›</span></div>`; }).join('')}</div>`}</div>
       <div class="card"><div class="list">
         <div class="it tap" onclick="go('attmonth',{month:'${m}'})"><div class="grow"><b>Monthly register</b><div class="sub">${monthLabel(m)}: every day for every teacher</div></div><span class="chev">›</span></div>
@@ -92,7 +92,7 @@ BIND.attendance = arg => {
 /* ---------- teachers ---------- */
 V.tatt = arg => {
   const i = inst(), tm = ATTC.timings(arg.date, i.level);
-  return `<div class="card noprint"><h2>Teachers and staff</h2><p class="muted">${DT.words(arg.date)} · assembly ${tm.assembly} · closing ${tm.close}<br><b>P</b> present · <b>A</b> absent without leave · <b>L</b> leave · <b>D</b> on duty elsewhere</p>
+  return `<div class="card noprint"><h2>Teachers and staff</h2><p class="muted">${DT.words(arg.date)} · assembly ${tm.assembly} · closing ${tm.close}<br><b>P</b> present · <b>A</b> absent without leave · <b>L</b> leave · <b>D</b> on duty elsewhere · <b>H</b> half leave (half a day)</p>
     <div class="tbar"><button class="btn alt" id="allin">All unmarked present, arrived now</button><button class="btn alt" id="allout">All present left now</button></div></div>
     <div id="tl"></div>
     <div class="decide"><button class="btn" id="tsave">Save attendance</button></div>`;
@@ -101,7 +101,8 @@ BIND.tatt = arg => {
   const date = arg.date, m = date.slice(0, 7), i = inst(), tm = ATTC.timings(date, i.level);
   const saved = {}; (ATTC.month(m).teachers || []).filter(r => r.date === date).forEach(r => { saved[r.cnic] = r; });
   const st = {}; ATTC.staff().forEach(e => { const r = saved[e.cnic] || {}; st[e.cnic] = { status: r.status || '', leave_type: r.leave_type || '', arrival: r.arrival || '', departure: r.departure || '', remark: r.remark || '' }; });
-  const LBL = [['Present', 'P'], ['Absent', 'A'], ['Leave', 'L'], ['On duty', 'D']];
+  const LBL = [['Present', 'P'], ['Absent', 'A'], ['Leave', 'L'], ['On duty', 'D'], ['Half leave', 'H']];
+  const timed = s => s.status === 'Present' || s.status === 'Half leave';
   const flags = s => { if (s.status !== 'Present') return '';
     const lm = ATTC.mins(s.arrival) !== null ? ATTC.mins(s.arrival) - ATTC.mins(tm.assembly) : 0, em = ATTC.mins(s.departure) !== null ? ATTC.mins(tm.close) - ATTC.mins(s.departure) : 0;
     return [lm > 0 ? lm + ' min late' : '', em > 0 ? 'left ' + em + ' min before closing' : ''].filter(Boolean).join(' · '); };
@@ -109,13 +110,13 @@ BIND.tatt = arg => {
     $('#tl').innerHTML = ATTC.staff().map(e => { const s = st[e.cnic];
       return `<div class="card trow" data-c="${esc(e.cnic)}"><div class="trh"><div><b>${esc(e.name)}</b><div class="sub">${esc(e.own_designation || e.designation)}</div></div>
         <div class="seg4">${LBL.map(([v, l]) => `<button type="button" class="${s.status === v ? 'on s' + l : ''}" data-v="${v}" title="${v}">${l}</button>`).join('')}</div></div>
-        ${s.status === 'Present' ? `<div class="tt"><label>Arrived<input class="tm" data-k="arrival" value="${esc(s.arrival)}" inputmode="numeric" placeholder="hh:mm"></label><button type="button" class="chip" data-now="arrival">Now</button>
+        ${timed(s) ? `<div class="tt"><label>Arrived<input class="tm" data-k="arrival" value="${esc(s.arrival)}" inputmode="numeric" placeholder="hh:mm"></label><button type="button" class="chip" data-now="arrival">Now</button>
           <label>Left<input class="tm" data-k="departure" value="${esc(s.departure)}" inputmode="numeric" placeholder="hh:mm"></label><button type="button" class="chip" data-now="departure">Now</button></div>
           <div class="tflag">${flags(s)}</div>` : ''}
         ${s.status === 'Leave' ? `<select data-k="leave_type">${opts(ATTC.leaveTypes(), s.leave_type, '— kind of leave —')}</select>` : ''}
-        ${s.status && s.status !== 'Present' ? `<input data-k="remark" value="${esc(s.remark)}" placeholder="Remarks (optional)">` : ''}</div>`; }).join('') || '<div class="card"><p class="muted">No staff in the register.</p></div>';
+        ${s.status === 'Half leave' ? `<input data-k="remark" value="${esc(s.remark)}" placeholder="Reason for the half leave *">` : s.status && s.status !== 'Present' ? `<input data-k="remark" value="${esc(s.remark)}" placeholder="Remarks (optional)">` : ''}</div>`; }).join('') || '<div class="card"><p class="muted">No staff in the register.</p></div>';
     document.querySelectorAll('.trow').forEach(row => { const c = row.dataset.c, s = st[c];
-      row.querySelectorAll('.seg4 button').forEach(b => b.onclick = () => { s.status = s.status === b.dataset.v ? '' : b.dataset.v; if (s.status === 'Present' && !s.arrival) s.arrival = ATTC.hhmm(); draw(); });
+      row.querySelectorAll('.seg4 button').forEach(b => b.onclick = () => { s.status = s.status === b.dataset.v ? '' : b.dataset.v; if (timed(s) && !s.arrival) s.arrival = ATTC.hhmm(); draw(); });
       row.querySelectorAll('[data-now]').forEach(b => b.onclick = () => { s[b.dataset.now] = ATTC.hhmm(); draw(); });
       row.querySelectorAll('select[data-k],input[data-k]:not(.tm)').forEach(el => el.onchange = () => { s[el.dataset.k] = el.value; });
       // typing a time updates the flag in place (no redraw, so the next tap is never lost)
@@ -129,18 +130,19 @@ BIND.tatt = arg => {
     const rows = [], staff = ATTC.staff();
     for (const e of staff) { const s = st[e.cnic], o = saved[e.cnic] || {};
       if (!s.status) continue;
-      if (s.status === 'Present' && ATTC.mins(s.arrival) === null) return toast('Arrival time for ' + e.name);
+      if (timed(s) && ATTC.mins(s.arrival) === null) return toast('Arrival time for ' + e.name);
       if (s.departure && ATTC.mins(s.departure) === null) return toast('Departure time for ' + e.name + ' should be hh:mm');
-      if (s.status === 'Present' && s.departure && ATTC.mins(s.departure) <= ATTC.mins(s.arrival)) return toast('Departure must be after arrival: ' + e.name);
+      if (timed(s) && s.departure && ATTC.mins(s.departure) <= ATTC.mins(s.arrival)) return toast('Departure must be after arrival: ' + e.name);
+      if (s.status === 'Half leave' && !(s.remark || '').trim()) return toast('Reason for the half leave of ' + e.name);
       if (s.status === 'Leave' && !s.leave_type) return toast('Kind of leave for ' + e.name);
-      if (['status', 'leave_type', 'arrival', 'departure', 'remark'].some(k => (s[k] || '') !== (o[k] || ''))) rows.push(Object.assign({ cnic: e.cnic }, s, s.status === 'Present' ? {} : { arrival: '', departure: '' }));
+      if (['status', 'leave_type', 'arrival', 'departure', 'remark'].some(k => (s[k] || '') !== (o[k] || ''))) rows.push(Object.assign({ cnic: e.cnic }, s, timed(s) ? {} : { arrival: '', departure: '' }));
     }
     if (!rows.length) return toast('Nothing new to save');
     const device_time = ATTC.now();
     queue('saveTeacherAttendance', { emis: S.emis, date, device_time, rows }, 'Teacher attendance ' + dmy(date));
     rows.forEach(r => { const e = staff.find(x => x.cnic === r.cnic), o = saved[r.cnic] || {};
       ATTC.put(m, 'teachers', Object.assign({}, o, r, { key: date + '|' + r.cnic, date, name: e.name, late_min: r.status === 'Present' ? String(Math.max(0, ATTC.mins(r.arrival) - ATTC.mins(tm.assembly))) : '', early_min: r.status === 'Present' && r.departure ? String(Math.max(0, ATTC.mins(tm.close) - ATTC.mins(r.departure))) : '', marked_device: o.marked_device || device_time })); });
-    const unmarked = staff.filter(e => !st[e.cnic].status).length, nodep = staff.filter(e => st[e.cnic].status === 'Present' && !st[e.cnic].departure).length;
+    const unmarked = staff.filter(e => !st[e.cnic].status).length, nodep = staff.filter(e => timed(st[e.cnic]) && !st[e.cnic].departure).length;
     toast(unmarked ? `Saved. ${unmarked} still unmarked.` : nodep ? 'Saved. Record departures before closing.' : 'Saved. Attendance complete for the day.'); back();
   };
   draw();
@@ -148,23 +150,23 @@ BIND.tatt = arg => {
 
 /* ---------- students of one class ---------- */
 V.satt = arg => { const [c, sec] = arg.cls.split('|');
-  return `<div class="card noprint"><h2>Class ${esc(c)}${sec ? '-' + esc(sec) : ''}</h2><p class="muted">${DT.words(arg.date)} · everyone is present unless tapped. Tap once for <b>absent</b>, twice for <b>leave</b>.</p><p id="scnt" class="muted"></p></div>
+  return `<div class="card noprint"><h2>Class ${esc(c)}${sec ? '-' + esc(sec) : ''}</h2><p class="muted">${DT.words(arg.date)} · everyone is present unless tapped. Tap once for <b>absent</b>, twice for <b>leave</b>, three times for <b>half day</b>.</p><p id="scnt" class="muted"></p></div>
     <div class="list sgrid" id="sg"></div><div class="decide"><button class="btn" id="ssv">Save class</button></div>`; };
 BIND.satt = arg => {
   const date = arg.date, m = date.slice(0, 7), [c, sec] = arg.cls.split('|');
   const kids = REG.students().filter(s => s.class === c && (s.section || '') === sec && s.adm_date <= date).sort((a, b) => Number(a.roll_no || 9999) - Number(b.roll_no || 9999) || a.name.localeCompare(b.name));
   const ex = (ATTC.month(m).students || []).find(r => r.date === date && r.class === c && (r.section || '') === sec) || {};
-  const mark = {}; (ex.absent_list || '').split(' ').filter(Boolean).forEach(a => { mark[a] = 'A'; }); (ex.leave_list || '').split(' ').filter(Boolean).forEach(a => { mark[a] = 'L'; });
+  const mark = {}; (ex.absent_list || '').split(' ').filter(Boolean).forEach(a => { mark[a] = 'A'; }); (ex.leave_list || '').split(' ').filter(Boolean).forEach(a => { mark[a] = 'L'; }); (ex.half_list || '').split(' ').filter(Boolean).forEach(a => { mark[a] = 'H'; });
   const draw = () => {
-    $('#sg').innerHTML = kids.map(s => `<div class="it tap sk ${mark[s.adm_no] ? 'k' + mark[s.adm_no] : ''}" data-a="${esc(s.adm_no)}"><span class="roll">${esc(s.roll_no || '')}</span><div class="grow"><b>${esc(s.name)}</b><div class="sub">s/o ${esc(s.father_name)} · Adm. ${esc(s.adm_no)}</div></div><span class="kst">${mark[s.adm_no] === 'A' ? 'Absent' : mark[s.adm_no] === 'L' ? 'Leave' : 'Present'}</span></div>`).join('');
-    const a = Object.values(mark).filter(x => x === 'A').length, l = Object.values(mark).filter(x => x === 'L').length;
-    $('#scnt').textContent = `${kids.length - a - l} present · ${a} absent · ${l} on leave · ${kids.length} in class`;
-    document.querySelectorAll('.sk').forEach(el => el.onclick = () => { const k = el.dataset.a; mark[k] = !mark[k] ? 'A' : mark[k] === 'A' ? 'L' : undefined; if (!mark[k]) delete mark[k]; draw(); });
+    $('#sg').innerHTML = kids.map(s => `<div class="it tap sk ${mark[s.adm_no] ? 'k' + mark[s.adm_no] : ''}" data-a="${esc(s.adm_no)}"><span class="roll">${esc(s.roll_no || '')}</span><div class="grow"><b>${esc(s.name)}</b><div class="sub">s/o ${esc(s.father_name)} · Adm. ${esc(s.adm_no)}</div></div><span class="kst">${mark[s.adm_no] === 'A' ? 'Absent' : mark[s.adm_no] === 'L' ? 'Leave' : mark[s.adm_no] === 'H' ? 'Half day' : 'Present'}</span></div>`).join('');
+    const a = Object.values(mark).filter(x => x === 'A').length, l = Object.values(mark).filter(x => x === 'L').length, h = Object.values(mark).filter(x => x === 'H').length;
+    $('#scnt').textContent = `${kids.length - a - l - h} present · ${a} absent · ${l} on leave${h ? ` · ${h} half day` : ''} · ${kids.length} in class`;
+    document.querySelectorAll('.sk').forEach(el => el.onclick = () => { const k = el.dataset.a; mark[k] = !mark[k] ? 'A' : mark[k] === 'A' ? 'L' : mark[k] === 'L' ? 'H' : undefined; if (!mark[k]) delete mark[k]; draw(); });
   };
   $('#ssv').onclick = () => {
-    const absent = Object.keys(mark).filter(k => mark[k] === 'A'), leave = Object.keys(mark).filter(k => mark[k] === 'L'), device_time = ATTC.now();
-    queue('saveStudentAttendance', { emis: S.emis, date, class: c, section: sec, absent, leave, device_time }, `Class ${c}${sec ? '-' + sec : ''} attendance ${dmy(date)}`);
-    ATTC.put(m, 'students', { key: date + '|' + c + '|' + sec, date, class: c, section: sec, enrolled: String(kids.length), present: String(kids.length - absent.length - leave.length), absent: String(absent.length), leave: String(leave.length), absent_list: absent.join(' '), leave_list: leave.join(' '), marked_device: ex.marked_device || device_time });
+    const absent = Object.keys(mark).filter(k => mark[k] === 'A'), leave = Object.keys(mark).filter(k => mark[k] === 'L'), half = Object.keys(mark).filter(k => mark[k] === 'H'), device_time = ATTC.now();
+    queue('saveStudentAttendance', { emis: S.emis, date, class: c, section: sec, absent, leave, half, device_time }, `Class ${c}${sec ? '-' + sec : ''} attendance ${dmy(date)}`);
+    ATTC.put(m, 'students', { key: date + '|' + c + '|' + sec, date, class: c, section: sec, enrolled: String(kids.length), present: String(kids.length - absent.length - leave.length - half.length / 2), absent: String(absent.length), leave: String(leave.length), half: String(half.length), absent_list: absent.join(' '), leave_list: leave.join(' '), half_list: half.join(' '), marked_device: ex.marked_device || device_time });
     toast('Saved'); back();
   };
   draw();
@@ -173,7 +175,7 @@ BIND.satt = arg => {
 /* ---------- monthly register ---------- */
 V.attmonth = arg => `<div class="card noprint"><div class="db-sh rhead"><h3>Monthly register</h3><span class="rbtn"><button class="btn alt" onclick="window.print()">Print</button></span></div>
   <label>Month</label><select id="amm">${opts([0, 1, 2].map(k => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - k); const m = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); return [m, monthLabel(m)]; }), arg.month)}</select>
-  <p class="muted">P present (<span class="kL0">P</span> late) · A absent · L leave · D on duty · grey: Sunday, vacation or closed.</p></div>
+  <p class="muted">P present (<span class="kL0">P</span> late) · A absent · L leave · D on duty · H half leave (counted ½ present, ½ leave) · grey: Sunday, vacation or closed.</p></div>
   <div class="card"><h3 class="ponly">${esc(inst().name)} · attendance register</h3><div class="rwrap" id="amg"></div></div>`;
 BIND.attmonth = arg => {
   const draw = () => {
@@ -181,15 +183,15 @@ BIND.attmonth = arg => {
     const days = Array.from({ length: n }, (_, k) => `${m}-${String(k + 1).padStart(2, '0')}`);
     const closed = {}; days.forEach(d => { closed[d] = ATTC.closed(d) || ((mo.daily || []).find(r => r.date === d && r.closed) || {}).closed || ''; });
     const by = {}; (mo.teachers || []).forEach(r => { by[r.cnic + '|' + r.date] = r; });
-    const code = r => !r || !r.status ? '' : r.status === 'Present' ? 'P' : r.status === 'Absent' ? 'A' : r.status === 'Leave' ? 'L' : 'D';
+    const code = r => !r || !r.status ? '' : r.status === 'Present' ? 'P' : r.status === 'Absent' ? 'A' : r.status === 'Leave' ? 'L' : r.status === 'Half leave' ? 'H' : 'D';
     const staff = ATTC.staff();
     const srows = days.map(d => { const list = (mo.students || []).filter(r => r.date === d); return list.length ? [list.reduce((a, r) => a + Number(r.present || 0), 0), list.reduce((a, r) => a + Number(r.enrolled || 0), 0)] : null; });
-    $('#amg').innerHTML = `<table class="amt"><thead><tr><th>Name</th>${days.map(d => `<th class="${closed[d] ? 'cl' : ''}" title="${esc(closed[d])}">${Number(d.slice(8))}</th>`).join('')}<th>P</th><th>Late</th><th>A</th><th>L</th></tr></thead><tbody>
-      ${staff.map(e => { let p = 0, l = 0, a = 0, lv = 0;
-        const cells = days.map(d => { const r = by[e.cnic + '|' + d], c = code(r); if (c === 'P') { p++; if (Number(r.late_min) > 0) l++; } if (c === 'A') a++; if (c === 'L') lv++;
-          return `<td class="${closed[d] ? 'cl' : ''} k${c}${c === 'P' && Number(r.late_min) > 0 ? ' lt' : ''}" title="${r ? esc(r.status + (r.arrival ? ' ' + r.arrival + (r.departure ? '–' + r.departure : '') : '') + (r.leave_type ? ' · ' + r.leave_type : '')) : ''}">${closed[d] ? '' : c}</td>`; }).join('');
-        return `<tr><td class="nm">${esc(e.name)}<small>${esc(e.own_designation || e.designation)}</small></td>${cells}<td class="n">${p}</td><td class="n">${l}</td><td class="n">${a}</td><td class="n">${lv}</td></tr>`; }).join('')}
-      ${srows.some(Boolean) ? `<tr class="stud"><td class="nm">Students present</td>${srows.map((x, k) => `<td class="${closed[days[k]] ? 'cl' : ''}">${x ? Math.round(x[0] * 100 / (x[1] || 1)) + '%' : ''}</td>`).join('')}<td colspan="4"></td></tr>` : ''}
+    $('#amg').innerHTML = `<table class="amt"><thead><tr><th>Name</th>${days.map(d => `<th class="${closed[d] ? 'cl' : ''}" title="${esc(closed[d])}">${Number(d.slice(8))}</th>`).join('')}<th>P</th><th>Late</th><th>A</th><th>L</th><th>H</th></tr></thead><tbody>
+      ${staff.map(e => { let p = 0, l = 0, a = 0, lv = 0, h = 0;
+        const cells = days.map(d => { const r = by[e.cnic + '|' + d], c = code(r); if (c === 'P') { p++; if (Number(r.late_min) > 0) l++; } if (c === 'A') a++; if (c === 'L') lv++; if (c === 'H') { h++; p += 0.5; lv += 0.5; }
+          return `<td class="${closed[d] ? 'cl' : ''} k${c}${c === 'P' && Number(r.late_min) > 0 ? ' lt' : ''}" title="${r ? esc(r.status + (r.arrival ? ' ' + r.arrival + (r.departure ? '–' + r.departure : '') : '') + (r.leave_type ? ' · ' + r.leave_type : '') + (r.status === 'Half leave' && r.remark ? ' · ' + r.remark : '')) : ''}">${closed[d] ? '' : c}</td>`; }).join('');
+        return `<tr><td class="nm">${esc(e.name)}<small>${esc(e.own_designation || e.designation)}</small></td>${cells}<td class="n">${p}</td><td class="n">${l}</td><td class="n">${a}</td><td class="n">${lv}</td><td class="n">${h}</td></tr>`; }).join('')}
+      ${srows.some(Boolean) ? `<tr class="stud"><td class="nm">Students present</td>${srows.map((x, k) => `<td class="${closed[days[k]] ? 'cl' : ''}">${x ? Math.round(x[0] * 100 / (x[1] || 1)) + '%' : ''}</td>`).join('')}<td colspan="5"></td></tr>` : ''}
       </tbody></table>`;
   };
   $('#amm').onchange = () => { draw(); ATTC.load($('#amm').value, true).then(() => { if (S.view === 'attmonth') draw(); }); };

@@ -31,11 +31,13 @@ const REG = {
   /** apply a local change at once so the list is right before the sync */
   put(s) { const r = REG.get() || { students: [], left: [], exists: true }; const i = r.students.findIndex(x => x.adm_no === s.adm_no); if (i >= 0) r.students[i] = Object.assign(r.students[i], s); else r.students.push(s); r.exists = true; REG.set(r); },
   remove(adm_no, upd) { const r = REG.get(); if (!r) return; const i = r.students.findIndex(x => x.adm_no === adm_no); if (i >= 0) { const s = Object.assign(r.students[i], upd, { status: 'Left' }); r.students.splice(i, 1); (r.left = r.left || []).push(s); REG.set(r); } },
+  /** a school may correct the admission number or remove a wrong entry within 30 days of entering it; officers at any time */
+  isNewRec(s) { if (role() !== 'SCHOOL' || s._pending) return true; const d = String(s.created_on || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) && (new Date(today()) - new Date(d)) / 864e5 <= 30; },
   /** counts for the enrolment return, same rule as the server */
   counts(month) {
     const out = {}; const all = REG.students().concat(((REG.get() || {}).left || []));
     all.forEach(s => {
-      if (s.status === 'Left' && s.left_date < month + '-01') return; if (s.adm_date > month + '-31') return;
+      if (s.left_reason === 'Entered by mistake') return; if (s.status === 'Left' && s.left_date < month + '-01') return; if (s.adm_date > month + '-31') return;
       const o = out[s.class] = out[s.class] || { class: s.class, boys: 0, girls: 0, new_admissions: 0 };
       o[s.gender === 'Female' ? 'girls' : 'boys']++; if ((s.adm_date || '').slice(0, 7) === month) o.new_admissions++;
     });
@@ -121,7 +123,8 @@ V.student = arg => {
     <div class="chips" id="docs">${DOCS.map(x => `<button type="button" class="${(s.docs || '').includes(x) ? 'on' : ''}" data-v="${x}">${x}</button>`).join('')}</div>
     ${f('notes', 'Notes')}
     </fieldset>
-    ${left ? '' : `<div class="decide"><button class="btn" id="ss">${isNew ? 'Admit student' : 'Save changes'}</button>${isNew ? '' : `<button class="btn alt" type="button" onclick="go('sprint',{adm_no:'${esc(s.adm_no)}'})">Print</button><button class="btn warn" type="button" onclick="go('withdraw',{adm_no:'${esc(s.adm_no)}'})">Record leaving</button>`}</div>`}
+    ${left ? '' : `<div class="decide"><button class="btn" id="ss">${isNew ? 'Admit student' : 'Save changes'}</button>${isNew ? '' : `<button class="btn alt" type="button" onclick="go('sprint',{adm_no:'${esc(s.adm_no)}'})">Print</button><button class="btn warn" type="button" onclick="go('withdraw',{adm_no:'${esc(s.adm_no)}'})">Record leaving</button>`}</div>
+      ${!isNew && REG.isNewRec(s) ? `<p class="muted"><a href="#" onclick="go('sfix',{adm_no:'${esc(s.adm_no)}'});return false">Wrong admission number, or entered by mistake?</a></p>` : ''}`}
   </form>`;
 };
 BIND.student = arg => {
@@ -154,6 +157,32 @@ BIND.student = arg => {
     REG.put(Object.assign({ status: 'Enrolled', _pending: 1 }, s));
     toast(isNew ? 'Admitted' : 'Saved'); back();
   };
+};
+
+/* ---------- correcting a new record ---------- */
+V.sfix = arg => {
+  const s = REG.students().find(x => x.adm_no === arg.adm_no); if (!s) return '<div class="card"><p class="muted">Not found.</p></div>';
+  return `<div class="card"><h2>Correct a new record</h2><p class="muted"><b>${esc(s.name)}</b> s/o ${esc(s.father_name)} · Adm. ${esc(s.adm_no)} · Class ${esc(s.class)}</p>
+    <p class="muted">Allowed within 30 days of entering the student. After that, ask the supervising officer.</p></div>
+    <form id="fxa" class="card"><h3>Wrong admission number</h3><p class="muted">Write the number as it is in the admission register. It must not be used by another student. Attendance already marked moves to the new number.</p>
+      <label>Correct Admission No.</label><input name="nw" value="" inputmode="text" autocomplete="off">
+      <div class="decide"><button class="btn">Change number</button></div></form>
+    <form id="fxr" class="card"><h3>Entered by mistake</h3><p class="muted">For a wrong child or a duplicate entry. The record is removed from the register and the class; it is <b>not</b> counted as leaving or dropout, and its admission number becomes free. A student who actually left school is recorded with “Record leaving” instead.</p>
+      <label>What was the mistake?</label><input name="why" placeholder="e.g. duplicate of Adm. 512">
+      <div class="decide"><button class="btn warn">Remove this entry</button></div></form>`;
+};
+BIND.sfix = arg => {
+  $('#fxa').onsubmit = e => { e.preventDefault(); const nw = $('#fxa').querySelector('[name=nw]').value.trim().toUpperCase();
+    if (!/^\d{1,6}[A-Z\-\/]?\d{0,4}$/.test(nw)) return toast('Admission No.: digits, optionally with a suffix');
+    if (nw === arg.adm_no) return toast('That is the same number');
+    if (REG.students().concat((REG.get() || {}).left || []).some(x => x.adm_no === nw)) return toast('Admission No. ' + nw + ' is already used in the register');
+    queue('changeAdmNo', { emis: S.emis, adm_no: arg.adm_no, new_adm_no: nw }, 'Adm. No. ' + arg.adm_no + ' → ' + nw);
+    const r = REG.get(); const x = r.students.find(y => y.adm_no === arg.adm_no); if (x) x.adm_no = nw; REG.set(r);
+    toast('Admission No. changed to ' + nw); S.stack.pop(); back(); };
+  $('#fxr').onsubmit = e => { e.preventDefault(); if (!confirm('Remove this entry from the register? It will not be counted as leaving.')) return;
+    queue('removeStudent', { emis: S.emis, adm_no: arg.adm_no, remark: $('#fxr').querySelector('[name=why]').value.trim() }, 'Removed (entered by mistake): ' + arg.adm_no);
+    const r = REG.get(); r.students = r.students.filter(y => y.adm_no !== arg.adm_no); REG.set(r);
+    toast('Removed'); S.stack.pop(); back(); };
 };
 
 /* ---------- leaving ---------- */

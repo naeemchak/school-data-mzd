@@ -329,9 +329,9 @@ V.staff = () => {
   <button class="btn alt" onclick="go('receive')">Receive transferred employee</button>
   ${pend.length ? `<div class="msg w">${pend.length} staff entr${pend.length > 1 ? 'ies' : 'y'} waiting to be sent.</div>` : ''}
   <div class="list">${list || '<p class="muted">No employee on the register yet. Use “First-time entry” for each employee who is not yet in the database.</p>'}</div></div>
-  <div class="card"><div class="db-sh rhead"><h3>Community Teachers (${(d.community || []).length})</h3><span class="rbtn"><button class="btn alt" onclick="go('ct',{})">+ Add</button></span></div>
-  <p class="muted">Engaged by the community or SMC; not civil servants and not counted against posts.</p>
-  ${(d.community || []).length ? `<div class="list">${d.community.map(c => `<div class="it tap" onclick="go('ct',{id:'${esc(c.id)}'})"><div class="grow"><b>${esc(c.name)}</b> <span class="muted">s/o ${esc(c.father_name)}</span><div class="sub">${esc(c.subject || 'Community Teacher')}${c.paid_by ? ' · paid by ' + esc(c.paid_by) : ''}</div></div><span class="badge ${c.status === 'Approved' || c.status === 'Accepted' ? 'o' : 'w'}">${c.status === 'Approved' || c.status === 'Accepted' ? 'Verified' : c.status === 'Returned' ? 'Returned' : 'Unverified'}</span><span class="chev">›</span></div>`).join('')}</div>` : ''}</div>
+  <div class="card"><div class="db-sh rhead"><h3>Staff not on posts (${(d.community || []).length})</h3><span class="rbtn"><button class="btn alt" onclick="go('ct',{})">+ Add</button></span></div>
+  <p class="muted">Community Teachers, contingent paid staff (Naib Qasid, Chowkidar…) and others working here without a sanctioned post. Not counted against posts; marked in attendance. Government employees go in the register above.</p>
+  ${(d.community || []).length ? `<div class="list">${d.community.map(c => `<div class="it tap" onclick="go('ct',{id:'${esc(c.id)}'})"><div class="grow"><b>${esc(c.name)}</b> <span class="muted">s/o ${esc(c.father_name)}</span><div class="sub">${(c.kind || 'Community Teacher') === 'Community Teacher' ? 'Community Teacher' + (c.subject ? ' · ' + esc(c.subject) : '') : esc(c.job || c.kind) + ' · ' + esc(c.kind)}${c.paid_by ? ' · paid from ' + esc(c.paid_by) : ''}${c.honorarium ? ' · Rs ' + esc(c.honorarium) : ''}</div></div><span class="badge ${c.status === 'Approved' || c.status === 'Accepted' ? 'o' : 'w'}">${c.status === 'Approved' || c.status === 'Accepted' ? 'Verified' : c.status === 'Returned' ? 'Returned' : 'Unverified'}</span><span class="chev">›</span></div>`).join('')}</div>` : ''}</div>
   ${out ? `<div class="card"><h2>Transfer of your staff: please confirm</h2><p class="muted">Another institution has asked for the record of these employees. Confirm the date of relieving, or reject if the employee has not been relieved or is the wrong person.</p><div class="list">${out}</div></div>` : ''}
   ${inc ? `<div class="card"><h2>Incoming transfers</h2><p class="muted">The record comes here after the outgoing institution confirms relieving and the AEO / DDEO / DEO office of both institutions approve.</p><div class="list">${inc}</div></div>` : ''}`;
 };
@@ -911,7 +911,7 @@ BIND.results = () => {
 V.approvals = () => `<div class="card"><h2>Waiting for approval</h2>
   <input type="search" id="aq" class="search" placeholder="Search institution, EMIS, type, month or person" autocomplete="off">
   <div class="seg" id="ak"></div><p class="muted" id="an"></p><div class="list" id="al"><p class="muted">${navigator.onLine ? 'Loading…' : 'Approvals need internet.'}</p></div></div>`;
-const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer', Facilities: 'Building', CommunityTeachers: 'Community Teacher', Attachments: 'Surplus attachment' };
+const KIND = { Enrolment: 'Enrolment', FeeCollection: 'Fees', FeeDeposits: 'Deposit', Results: 'Results', Employees: 'Staff record', Transfers: 'Transfer', Facilities: 'Building', CommunityTeachers: 'Not on post', Attachments: 'Surplus attachment' };
 BIND.approvals = async () => {
   if (!navigator.onLine) return;
   const j = await api('listPending', {});
@@ -1167,6 +1167,7 @@ BIND.institutions = async () => {
 /* ---------- staff search ---------- */
 V.search = () => `<div class="card"><h2>Staff search</h2>
   <input id="sq" placeholder="${role() === 'SCHOOL' ? 'Name, CNIC or personnel number' : 'Name, CNIC, personnel number or school'}" autofocus>
+  <label class="chk"><input type="checkbox" id="sleft"> Include those who have left (retired, transferred out, died…)</label>
   <p class="muted" id="sn">${role() === 'SCHOOL' ? 'Searches the staff of this institution.' : 'Searches all institutions you supervise. Type at least 3 letters.'}</p>
   <div class="list" id="sr"></div></div>`;
 BIND.search = () => {
@@ -1177,7 +1178,8 @@ BIND.search = () => {
     $('#sn').textContent = 'Searching…';
     let found = [], offline = false;
     if (navigator.onLine) {
-      try { const j = await api('searchStaff', role() === 'SCHOOL' ? { q, emis: S.emis } : { q }); if (j.ok) found = j.found; } catch (e) { offline = true; }
+      const lf = $('#sleft').checked ? { left: true } : {};
+      try { const j = await api('searchStaff', Object.assign(role() === 'SCHOOL' ? { q, emis: S.emis } : { q }, lf)); if (j.ok) found = j.found; } catch (e) { offline = true; }
     } else offline = true;
     if (offline) {   // offline copy
       const ql = q.toLowerCase(), dg = q.replace(/\D/g, '');
@@ -1190,10 +1192,11 @@ BIND.search = () => {
     $('#sr').innerHTML = found.map((e, k) => `<div class="it tap" onclick="openStaff(${k})"><div class="grow"><b>${esc(e.name)}</b> <span class="muted">s/o ${esc(e.father_name || '')}</span>
       <div class="sub">${esc(e.own_designation || e.designation)}${e.own_designation && e.own_designation !== e.designation ? ' · against ' + esc(e.designation) + ' post' : ''} · BPS ${esc(e.post_bps)}</div>
       <div class="sub">${esc(e.station)}${e.halqa ? ' · ' + esc(e.halqa) : ''} · ${esc(e.cnic)}${e.personnel_no ? ' · P.No ' + esc(e.personnel_no) : ''}</div></div>
-      <span class="badge ${e.verified === 'Verified' ? 'o' : 'w'}">${e.verified === 'Verified' ? 'Verified' : 'Unverified'}</span><span class="chev">›</span></div>`).join('');
+      ${e.record_state === 'Left' ? `<span class="badge">${esc(e.duty_status || 'Left')}</span>` : `<span class="badge ${e.verified === 'Verified' ? 'o' : 'w'}">${e.verified === 'Verified' ? 'Verified' : 'Unverified'}</span>`}<span class="chev">›</span></div>`).join('');
     S.searchFound = found;
   };
   $('#sq').oninput = () => { clearTimeout(t); t = setTimeout(run, 350); };
+  $('#sleft').onchange = run;
   $('#sq').focus();
 };
 /** switch to another institution and make sure its record is loaded (server, or offline copy) */
@@ -1206,7 +1209,12 @@ async function ensureInst(emis) {
   const d = await SCOPE.institution(emis); if (d) { saveD(d); return true; }
   toast('This institution is not available offline yet'); return false;
 }
-window.openStaff = async k => { const e = S.searchFound[k]; if (await ensureInst(e.emis)) go('emp', { cnic: e.cnic }); };
+window.openStaff = async k => { const e = S.searchFound[k]; if (e.record_state === 'Left') return go('empleft', { k }); if (await ensureInst(e.emis)) go('emp', { cnic: e.cnic }); };
+/** a record marked as left: shown, not edited; only the DEO office can reopen it */
+V.empleft = arg => { const e = (S.searchFound || [])[arg.k]; if (!e) return '<div class="card"><p class="muted">Search again.</p></div>';
+  return `<div class="card"><h2>${esc(e.name)}</h2><div class="msg w">This record is marked as <b>${esc(e.duty_status || 'left')}</b>. It is kept for the record and cannot be entered again. If the person still serves, ask the DEO office to correct the record.</div>
+    <div class="kv2"><b>Father's name</b><span>${esc(e.father_name || '–')}</span><b>CNIC</b><span>${esc(e.cnic)}</span><b>Personnel No.</b><span>${esc(e.personnel_no || '–')}</span>
+    <b>Title</b><span>${esc(e.own_designation || e.designation || '–')}</span><b>Last station</b><span>${esc(e.station || e.emis)}</span></div></div>`; };
 
 /* ---------- reports (v4G.1: catalogue, key figures, search, sort) ---------- */
 const HALQAS = ['Halqa 1', 'Halqa 2', 'Halqa 3', 'Halqa 4', 'Halqa 5'], LEVELS = ['Higher Secondary', 'High', 'Middle', 'Primary'];
@@ -1218,7 +1226,7 @@ const RMETA = {
   exceptions: { g: 0, d: 'Staff below their substantive scale, and surplus staff attached elsewhere.', k: [['Staff listed', 'count'], ['Institutions', 'distinct', 'EMIS']] },
   directory: { g: 0, d: 'Every employee with post, scale, mobile and verification.', k: [['Employees', 'count'], ['Institutions', 'distinct', 'EMIS'], ['Not yet verified', 'countif', 'Verification', v => v !== 'Verified']] },
   retirements: { g: 0, d: 'Employees reaching the age of 60 in the next 12 months.', k: [['Employees', 'count'], ['Institutions', 'distinct', 'EMIS']] },
-  community: { g: 0, d: 'Community Teachers: who pays them, honorarium and subject.', k: [['Community Teachers', 'count'], ['Institutions', 'distinct', 'EMIS'], ['Honorarium a month (Rs)', 'sum', 'Monthly honorarium (Rs)']] },
+  community: { g: 0, d: 'Community Teachers, contingent paid and other staff without posts: job, who pays, monthly wage.', k: [['People', 'count'], ['Community Teachers', 'countif', 'Type', v => v === 'Community Teacher'], ['Contingent paid', 'countif', 'Type', v => v === 'Contingent paid'], ['Wages a month (Rs)', 'sum', 'Monthly wage (Rs)']] },
   students: { g: 1, d: 'Student registers: enrolment by class, admissions, leaving and dropouts. No names.', k: [['Enrolled', 'sum', 'Enrolled (register)'], ['Boys', 'sum', 'Boys'], ['Girls', 'sum', 'Girls'], ['Registers not started', 'countif', 'Register', v => v !== 'Yes']] },
   attendance: { g: 1, d: 'Staff and student attendance by institution, this month and last.', k: [['Staff present', 'avg%', 'Staff present %'], ['Students present', 'avg%', 'Student attendance %'], ['Late arrivals', 'sum', 'Late arrivals'], ['Absent without leave (staff-days)', 'sum', 'Absent without leave (staff-days)']] },
   attendance_staff: { g: 1, d: 'This month, employee by employee: days present, late, absent and on leave.', k: [['Employees', 'count'], ['Late arrivals', 'sum', 'Late arrivals'], ['Days absent without leave', 'sum', 'Days absent without leave']] },
@@ -1356,9 +1364,9 @@ BIND.review = async x => {
   }
   if (x.sheet === 'CommunityTeachers') {
     const c = it.rows[0];
-    html = `<div class="kv2"><b>Name</b><span>${esc(c.name)} s/o ${esc(c.father_name)}</span><b>CNIC</b><span>${esc(c.cnic || '–')}</span><b>Qualification</b><span>${esc(c.qualification || '–')}</span><b>Subject</b><span>${esc(c.subject || '–')}</span>
-      <b>Paid by</b><span>${esc(c.paid_by || '–')}${c.paid_by_name ? ' (' + esc(c.paid_by_name) + ')' : ''}${c.honorarium ? ' · Rs ' + esc(c.honorarium) + ' a month' : ''}</span><b>Serving since</b><span>${esc(dmy(c.from_date))}</span><b>Mobile</b><span>${esc(c.mobile || '–')}</span></div>
-      <p class="muted">A Community Teacher is not a civil servant and is not counted against any post.</p>`;
+    html = `<div class="kv2"><b>Type</b><span>${esc(c.kind || 'Community Teacher')}${c.job && c.job !== 'Teacher' ? ' · ' + esc(c.job) : ''}</span><b>Name</b><span>${esc(c.name)} s/o ${esc(c.father_name)}</span><b>CNIC</b><span>${esc(c.cnic || '–')}</span><b>Qualification</b><span>${esc(c.qualification || '–')}</span><b>Subject</b><span>${esc(c.subject || '–')}</span>
+      <b>Paid by</b><span>${esc(c.paid_by || '–')}${c.paid_by_name ? ' (' + esc(c.paid_by_name) + ')' : ''}${c.honorarium ? ' · Rs ' + esc(c.honorarium) + ' a month' : ''}</span><b>Serving since</b><span>${esc(dmy(c.from_date))}</span>${c.order_no ? `<b>Order</b><span>${esc(c.order_no)}${c.order_date ? ' dated ' + esc(dmy(c.order_date)) : ''}</span>` : ''}<b>Mobile</b><span>${esc(c.mobile || '–')}</span></div>
+      <p class="muted">Staff not on posts are not civil servants and are not counted against any post.</p>`;
   }
   if (x.sheet === 'Attachments') {
     const a = it.attachment, e = it.employee;

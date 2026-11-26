@@ -25,7 +25,7 @@ const TT = {
     const d = D(); if (!d) return [];
     const emp = d.employees.filter(e => e.record_state !== 'Left' && !(e.attached_to && e.attached_to !== S.emis))
       .map(e => ({ id: e.cnic, name: e.name, title: e.own_designation || e.designation, kind: e.surplus ? 'Surplus' : 'Staff' }));
-    const ct = (d.community || []).map(c => ({ id: 'CT:' + c.id, name: c.name, title: 'Community Teacher', kind: 'Community' }));
+    const ct = (d.community || []).filter(c => (c.kind || 'Community Teacher') !== 'Contingent paid').map(c => ({ id: 'CT:' + c.id, name: c.name, title: (c.kind || 'Community Teacher') === 'Community Teacher' ? 'Community Teacher' : (c.job || c.kind), kind: 'Community' }));   // contingent paid staff are not given periods
     const teach = /teacher|specialist|instructor|headmaster|principal|qari|mualim|moalim|lecturer/i;
     return emp.filter(t => teach.test(t.title)).concat(ct, emp.filter(t => !teach.test(t.title)));
   },

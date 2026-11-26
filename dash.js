@@ -23,7 +23,7 @@ const DASH = (() => {
 
   /** horizontal bars: rows [{label, value, tip}] scaled to the largest */
   function hbars(rows, opts = {}) {
-    const max = Math.max(1, ...rows.map(r => r.value));
+    const max = opts.max || Math.max(1, ...rows.map(r => r.value));
     return `<div class="db-hb">${rows.map(r => `<div class="db-hbr" tabindex="0" data-tip="${esc(r.tip || r.label + ': ' + nf(r.value))}">
       <span class="db-hbl">${esc(r.label)}</span><span class="db-hbt"><i class="${opts.cls || ''}" style="width:${Math.max(2, r.value * 100 / max)}%"></i></span>
       <span class="db-hbv">${opts.fmt ? opts.fmt(r.value) : nf(r.value)}</span></div>`).join('')}</div>`;
@@ -78,20 +78,27 @@ const DASH = (() => {
       <div class="db-figs">${heroFigs}</div>
       <div class="db-stamp">Figures as of ${esc(fmtTime(d.generated))}</div></section>`;
 
-    /* needs attention */
+    /* needs attention: every line opens the screen where it is dealt with */
     const att = [];
-    if (W.pendingApprovals) att.push(['crit', W.pendingApprovals, 'items waiting for your approval', `<button class="btn" onclick="go('approvals')">Open approvals</button>`]);
-    if (W.returned) att.push(['crit', W.returned, 'entries returned for correction', `<button class="btn alt" onclick="window.scrollTo(0,document.body.scrollHeight)">See below</button>`]);
-    if (!single && W.notReporting) att.push(['warn', W.notReporting, 'institutions have not updated enrolment this month or last', '']);
-    if (single && !E.total) att.push(['warn', 1, 'enrolment for this month is not entered', `<button class="btn alt" onclick="go('enrol')">Enter enrolment</button>`]);
-    if (St.total - St.verified) att.push(['info', St.total - St.verified, 'staff records not yet verified', '']);
-    if (W.transfers) att.push(['info', W.transfers, 'transfers in process', single ? `<button class="btn alt" onclick="go('staff')">Open staff</button>` : '']);
-    if (d.retiring.count) att.push(['info', d.retiring.count, 'employees reach age 60 within 12 months', '']);
-    const nr = !single && W.notReportingList.length ? `<div class="db-nr">${W.notReportingList.slice(0, 6).map(i =>
-      `<button class="db-chip" onclick="pick('${esc(i.emis)}')">${esc(i.name)}</button>`).join('')}${W.notReporting > 6 ? `<span class="db-more">and ${nf(W.notReporting - 6)} more</span>` : ''}</div>` : '';
+    const officer = !single && role() !== 'SCHOOL';
+    if (W.pendingApprovals) att.push(['crit', W.pendingApprovals, 'items waiting for your approval', "DASHGO('approvals')"]);
+    if (W.returned) att.push(['crit', W.returned, 'entries returned for correction', "window.scrollTo(0,document.body.scrollHeight)"]);
+    if (!single && W.notReporting) att.push(['warn', W.notReporting, 'institutions have not updated enrolment this month or last', "DASHGO('report','compliance')"]);
+    if (single && !E.total) att.push(['warn', 1, 'enrolment for this month is not entered', "DASHGO('enrol')"]);
+    if (St.total - St.verified) att.push(['info', St.total - St.verified, 'staff records not yet verified', officer ? "DASHGO('approvals','Employees')" : "DASHGO('staff')"]);
+    if (W.transfers) att.push(['info', W.transfers, 'transfers in process', officer ? "DASHGO('approvals','Transfers')" : "DASHGO('staff')"]);
+    if (d.retiring.count) att.push(['info', d.retiring.count, 'employees reach age 60 within 12 months', officer ? "DASHGO('report','retirements')" : "document.getElementById('dbret').scrollIntoView({behavior:'smooth'})"]);
+    const IM = !single && d.impl ? d.impl : null;
     const attention = sec('Needs attention', att.length ? '' : 'All clear',
-      att.length ? `<ul class="db-att">${att.map(([lvl, n, t, a]) => `<li class="${lvl}"><span class="db-cnt">${nf(n)}</span><span class="db-att-t">${t}</span>${a}</li>`).join('')}</ul>${nr}`
-        : empty('Nothing is waiting. All entries are up to date.'), 'db-s4');
+      att.length ? `<ul class="db-att">${att.map(([lvl, n, t, go]) => `<li class="${lvl} db-tap" tabindex="0" role="button" onclick="${go}" onkeydown="if(event.key==='Enter')this.click()"><span class="db-cnt">${nf(n)}</span><span class="db-att-t">${t}</span><span class="chev">›</span></li>`).join('')}</ul>`
+        : empty('Nothing is waiting. All entries are up to date.'), IM ? 'db-s4' : 'db-s12');
+
+    /* implementation index in brief (officers) */
+    const implSec = IM ? sec('Implementation', `${plural(IM.count, 'institution')}`, `<div class="db-impl">
+        <div class="db-implr" onclick="DASHGO('impl')" role="button" tabindex="0">${typeof IMPLC !== 'undefined' ? IMPLC.ring(IM.avg, 120) : `<b>${IM.avg}</b>`}<span>average index</span></div>
+        <div class="db-impld"><div class="ichips">${[['green', IM.green, 'fully implemented'], ['amber', IM.amber, 'in progress'], ['red', IM.red, 'behind']].map(([b, n, w]) => `<button class="ich ${b}" onclick="DASHGO('impl','${b}')"><b>${nf(n)}</b>${w}</button>`).join('')}</div>
+          ${IM.units.length > 1 ? `<h4>Average by ${IM.by.toLowerCase()}</h4>${hbars(IM.units.map(u => ({ label: u.name, value: u.avg, tip: `${u.name}: average ${u.avg} of 100, ${plural(u.n, 'institution')}` })), { fmt: v => v + '/100', cls: 'v1', max: 100 })}` : ''}
+          <button class="btn alt" onclick="DASHGO('impl')">Open implementation index</button></div></div>`, 'db-s8') : '';
 
     /* staffing */
     const staffBody = (P.sanctioned ? meter([{ label: 'Filled', value: P.filled, cls: 'v1' }, { label: 'Vacant', value: P.vacant, cls: 'vw' }], P.sanctioned)
@@ -211,7 +218,7 @@ const DASH = (() => {
           : fig(`${nf(AT.marked)}<small>/${nf(AT.institutions)}</small>`, 'Institutions marked', AT.marked ? `${nf(AT.onTime)} by 11:00` : '', AT.marked < AT.institutions ? 'warn' : 'up')}
         ${fig(T.marked ? pct(T.present, T.marked) + '%' : '–', 'Staff present', single ? '' : `${nf(T.present)} of ${nf(T.marked)} marked`)}
         ${fig(nf(T.late), 'Arrived late', T.early ? `${nf(T.early)} left early` : '', T.late ? 'warn' : '')}
-        ${fig(nf(T.absent), 'Absent without leave', `${nf(T.leave)} on leave${T.duty ? ` · ${nf(T.duty)} on duty` : ''}`, T.absent ? 'warn' : '')}
+        ${fig(nf(T.absent), 'Absent without leave', `${nf(T.leave)} on leave${T.half ? ` · ${nf(T.half)} half leave` : ''}${T.duty ? ` · ${nf(T.duty)} on duty` : ''}`, T.absent ? 'warn' : '')}
         ${fig(sp == null ? '–' : sp + '%', 'Students present', AT.students.schools ? (single ? `${nf(AT.students.present)} of ${nf(AT.students.enrolled)}` : `${plural(AT.students.schools, 'school')} marked`) : 'not marked')}
       </div>
       ${T.noDeparture ? `<p class="db-p db-small">${plural(T.noDeparture, 'departure')} not yet recorded.</p>` : ''}
@@ -241,7 +248,7 @@ const DASH = (() => {
     const ret = d.retiring.count ? `<ul class="db-ret">${d.retiring.next.map(r => `<li><div><b>${esc(r.name)}</b><span>${esc(r.designation)}${single ? '' : ', ' + esc(r.inst)}</span></div><time>${esc(fmtTime(r.date).replace(', ', ''))}</time></li>`).join('')}</ul>
       ${d.retiring.count > d.retiring.next.length ? `<div class="db-more">and ${nf(d.retiring.count - d.retiring.next.length)} more</div>` : ''}`
       : empty('No employee reaches age 60 in the next 12 months.');
-    const retire = sec('Reaching age 60', 'next 12 months', ret, 'db-s12 db-retw');
+    const retire = sec('Reaching age 60', 'next 12 months', ret, 'db-s4').replace('<section ', '<section id="dbret" ');
 
     /* breakdown */
     let table = '';
@@ -258,7 +265,7 @@ const DASH = (() => {
           <td class="n">${u.pass == null ? '–' : u.pass + '%'}</td>${halqa ? `<td class="n">${nf(u.profiles || 0)}${u.problems ? ` <span class="db-no">(${u.problems})</span>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>`, 'db-s12');
     }
 
-    return { hero: `<div class="db">${hero}</div>`, grid: `<div class="db"><div class="db-grid">${attention}${attSec}${staffing}${results}${students}${fees}${regSec}${infra}${table}${retire}</div></div>` };
+    return { hero: `<div class="db">${hero}</div>`, grid: `<div class="db"><div class="db-grid">${attention}${implSec}${attSec}${staffing}${retire}${results}${students}${fees}${regSec}${infra}${table}</div></div>` };
   }
 
   /* ---------- tooltip (hover on desktop, tap on phones) ---------- */
@@ -300,6 +307,13 @@ const DASH = (() => {
       if (j.ok && j.dash) { LS.set(key(emis), j.dash); if (target && target.el === el && document.body.contains(el)) paint(el, j.dash); }
     } catch (e) { /* keep cached figures */ }
   }
+  /** from a dashboard line to the screen that deals with it; an approvals type or an implementation colour is pre-selected */
+  window.DASHGO = (view, x) => {
+    if (view === 'approvals') { LS.set('a_kind', x || ''); return go('approvals'); }
+    if (view === 'report') return go('report', { id: x });
+    if (view === 'impl') { LS.set('iband', x || ''); LS.set('ih', ''); LS.set('il', ''); return go('impl'); }
+    go(view);
+  };
   const credit = () => `<footer class="db-credit">Conceived and developed by Dr. Muhammad Naeem Khwaja, District Education Officer (Male), Muzaffarabad.<br><a href="#" onclick="go('about');return false">About this app</a></footer>`;
   return {
     load, render, credit,

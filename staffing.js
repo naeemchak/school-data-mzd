@@ -1,7 +1,8 @@
 /* =====================================================================
    STAFFING (v4 part F): receiving a transferred employee under the
    substantive-scale rule with minimum disclosure, surplus attachments
-   (DEO approval), Community Teachers, School Management Committee.
+   (DEO approval), staff not on posts (Community Teachers, contingent paid, other),
+   School Management Committee.
    ===================================================================== */
 
 /* ---------- receive a transferred employee ---------- */
@@ -63,29 +64,43 @@ BIND.receive = () => {
   };
 };
 
-/* ---------- Community Teachers ---------- */
+/* ---------- Staff not on posts (Community Teachers, contingent paid, other) ---------- */
+const SKINDS = [['Community Teacher', 'Community Teacher', 'Teaches; engaged by the community, SMC or an NGO'], ['Contingent paid', 'Contingent paid', 'Naib Qasid, Chowkidar, Sweeper… paid from contingency or school funds'], ['Other', 'Other', 'Anyone else working here without a post']];
+const SJOBS = ['Naib Qasid', 'Chowkidar', 'Sweeper', 'Mali', 'Cook', 'Clerk', 'Computer operator', 'Lab attendant', 'Driver'];
 V.ct = arg => {
-  const d = D(); const t = (d.community || []).find(x => x.id === arg.id) || { gender: 'Male', from_date: today(), paid_by: '' };
-  return `<form id="ctf" class="card"><h2>${arg.id ? esc(t.name) : 'Community Teacher'}</h2>
-    <p class="muted">A teacher engaged by the community or the School Management Committee where government teachers are short. Not a civil servant; not counted against any post. Can be given periods in the timetable and marked in attendance.</p>
+  const d = D(); const t = (d.community || []).find(x => x.id === arg.id) || { gender: 'Male', from_date: today(), paid_by: '', kind: (arg && arg.kind) || '' };
+  const k = t.id ? (t.kind || 'Community Teacher') : t.kind;
+  return `<form id="ctf" class="card"><h2>${arg.id ? esc(t.name) : 'Staff not on a post'}</h2>
+    <p class="muted">For people who work here without holding a sanctioned post. They are not civil servants and are never counted against posts. They are marked in attendance; Community Teachers can also be given periods in the timetable. Do not enter government employees here.</p>
     ${t.status === 'Returned' ? `<div class="msg w">Returned: ${esc(t.remark)}</div>` : ''}
+    <label>Type *</label><input type="hidden" name="kind" value="${esc(k || '')}">
+    <div class="ksel" id="ksel">${SKINDS.map(([v, l, h]) => `<button type="button" data-v="${v}" class="${k === v ? 'on' : ''}"><b>${l}</b><span>${h}</span></button>`).join('')}</div>
+    <div id="ctjob" ${k && k !== 'Community Teacher' ? '' : 'hidden'}><label>Job *</label><input name="job" list="sjobs" value="${esc(t.job && t.job !== 'Teacher' ? t.job : '')}" placeholder="e.g. Naib Qasid, Chowkidar"><datalist id="sjobs">${SJOBS.map(j => `<option value="${j}">`).join('')}</datalist></div>
     <label>Name *</label><input name="name" value="${esc(t.name || '')}" style="text-transform:uppercase"><label>Father's name *</label><input name="father_name" value="${esc(t.father_name || '')}" style="text-transform:uppercase">
     <div class="row"><div><label>CNIC</label><input name="cnic" inputmode="numeric" value="${esc(t.cnic || '')}"></div><div><label>Mobile</label><input name="mobile" inputmode="tel" value="${esc(t.mobile || '')}"></div></div>
     <div class="row"><div><label>Gender</label><select name="gender">${opts(['Male', 'Female'], t.gender)}</select></div><div><label>Qualification</label><input name="qualification" value="${esc(t.qualification || '')}"></div></div>
-    <label>Subject(s) taught</label><input name="subject" value="${esc(t.subject || '')}">
-    <div class="row"><div><label>Paid by</label><select name="paid_by">${opts(S.boot.meta.communityPaidBy || ['School Management Committee', 'Community', 'NGO', 'Philanthropist', 'Other'], t.paid_by, '— choose —')}</select></div><div><label>Name of NGO / person (if any)</label><input name="paid_by_name" value="${esc(t.paid_by_name || '')}"></div></div>
-    <div class="row"><div><label>Monthly honorarium (Rs)</label><input name="honorarium" inputmode="numeric" value="${esc(t.honorarium || '')}"></div><div><label>Serving since *</label><input type="date" name="from_date" value="${esc(t.from_date || '')}"></div></div>
+    <div id="ctsub" ${k === 'Contingent paid' ? 'hidden' : ''}><label>Subject(s) taught</label><input name="subject" value="${esc(t.subject || '')}"></div>
+    <div class="row"><div><label>Paid from</label><select name="paid_by">${opts(S.boot.meta.communityPaidBy || ['School Management Committee', 'Community', 'NGO', 'Philanthropist', 'School funds', 'Government contingency budget', 'Other'], t.paid_by, '— choose —')}</select></div><div><label>Name of NGO / person (if any)</label><input name="paid_by_name" value="${esc(t.paid_by_name || '')}"></div></div>
+    <div class="row"><div><label>Monthly wage / honorarium (Rs)</label><input name="honorarium" inputmode="numeric" value="${esc(t.honorarium || '')}"></div><div><label>Serving since *</label><input type="date" name="from_date" value="${esc(t.from_date || '')}"></div></div>
+    <div class="row"><div><label>Order No. (if any)</label><input name="order_no" value="${esc(t.order_no || '')}"></div><div><label>Date of order</label><input type="date" name="order_date" value="${esc(t.order_date || '')}"></div></div>
     <div class="decide"><button class="btn">Save</button>${arg.id ? '<button class="btn warn" type="button" id="ctl">Record leaving</button>' : ''}</div></form>`;
 };
 BIND.ct = arg => {
-  $('#ctf').onsubmit = e => { e.preventDefault(); const t = formData($('#ctf')); t.id = arg.id || '';
+  const f = $('#ctf'), q = n => f.querySelector(`[name="${n}"]`);
+  $('#ksel').querySelectorAll('button').forEach(b => b.onclick = () => { q('kind').value = b.dataset.v; $('#ksel').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#ksel').classList.remove('need');
+    $('#ctjob').hidden = b.dataset.v === 'Community Teacher'; $('#ctsub').hidden = b.dataset.v === 'Contingent paid'; });
+  f.onsubmit = e => { e.preventDefault(); const t = formData(f); t.id = arg.id || '';
+    if (!t.kind) { $('#ksel').classList.add('need'); return toast('Choose the type'); }
+    if (t.kind === 'Community Teacher') t.job = 'Teacher'; else if (!t.job) return toast('Write the job, e.g. Naib Qasid');
+    if (t.kind === 'Contingent paid') t.subject = '';
     if (!t.name || !t.father_name || !t.from_date) return toast("Name, father's name and the date are required");
-    queue('saveCommunityTeacher', { emis: S.emis, teacher: t }, 'Community Teacher: ' + t.name);
+    if (t.honorarium && !/^\d{1,7}$/.test(t.honorarium)) return toast('Monthly wage in rupees, digits only');
+    queue('saveCommunityTeacher', { emis: S.emis, teacher: t }, t.kind + ': ' + t.name);
     const d = D(); d.community = d.community || []; const i = d.community.findIndex(x => x.id === arg.id);
     const row = Object.assign({ id: arg.id || 'tmp' + Date.now(), status: 'Submitted', state: 'Serving' }, t, { name: t.name.toUpperCase(), father_name: t.father_name.toUpperCase() });
     if (i >= 0) d.community[i] = row; else d.community.push(row); saveD(d); toast('Saved'); back(); };
-  const l = $('#ctl'); if (l) l.onclick = () => { if (!confirm('Record that this teacher no longer serves here?')) return;
-    queue('leaveCommunityTeacher', { id: arg.id, to_date: today() }, 'Community Teacher left'); const d = D(); d.community = (d.community || []).filter(x => x.id !== arg.id); saveD(d); back(); };
+  const l = $('#ctl'); if (l) l.onclick = () => { if (!confirm('Record that this person no longer works here?')) return;
+    queue('leaveCommunityTeacher', { id: arg.id, to_date: today() }, 'Left (not on post)'); const d = D(); d.community = (d.community || []).filter(x => x.id !== arg.id); saveD(d); back(); };
 };
 
 /* ---------- School Management Committee ---------- */
