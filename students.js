@@ -15,7 +15,7 @@ const DISABILITIES = ['None', 'Visual', 'Hearing', 'Speech', 'Physical', 'Intell
 const DOCS = ['B-Form copy', "Father's CNIC copy", 'School leaving certificate', 'Previous result card', 'Photographs'];
 const IMPORT_COLS = [['adm_no', 'Admission No.*'], ['adm_date', 'Date of admission* (YYYY-MM-DD)'], ['name', 'Student name*'], ['name_ur', 'Name in Urdu'], ['father_name', "Father's name*"], ['father_name_ur', "Father's name in Urdu"],
   ['gender', 'Gender* (Male/Female)'], ['dob', 'Date of birth* (YYYY-MM-DD)'], ['class', 'Class* (ECE, I … XII)'], ['section', 'Section'], ['roll_no', 'Roll No.'], ['bform', 'B-Form No.'], ['father_cnic', "Father's CNIC"], ['mobile', 'Mobile'],
-  ['religion', 'Religion'], ['address', 'Address'], ['uc', 'Union council'], ['orphan', 'Orphan (Yes/No)'], ['disability', 'Disability'], ['prev_school', 'Previous school (if any)']];
+  ['religion', 'Religion'], ['address', 'Address'], ['uc', 'Union council'], ['orphan', 'Orphan (Yes/No)'], ['disability', 'Disability'], ['prev_school', 'Previous school (if any)'], ['refugee', '1989 refugee (Yes/No)'], ['refugee_card', 'Refugee card No.']];
 
 /* ---------- local register cache (per institution, inside D()) ---------- */
 const REG = {
@@ -38,8 +38,9 @@ const REG = {
     const out = {}; const all = REG.students().concat(((REG.get() || {}).left || []));
     all.forEach(s => {
       if (s.left_reason === 'Entered by mistake') return; if (s.status === 'Left' && s.left_date < month + '-01') return; if (s.adm_date > month + '-31') return;
-      const o = out[s.class] = out[s.class] || { class: s.class, boys: 0, girls: 0, new_admissions: 0 };
+      const o = out[s.class] = out[s.class] || { class: s.class, boys: 0, girls: 0, new_admissions: 0, refugees: 0, refugee_adm: 0 };
       o[s.gender === 'Female' ? 'girls' : 'boys']++; if ((s.adm_date || '').slice(0, 7) === month) o.new_admissions++;
+      if (s.refugee === 'Yes') { o.refugees++; if ((s.adm_date || '').slice(0, 7) === month) o.refugee_adm++; }
     });
     return CLASSES.filter(c => out[c]).map(c => out[c]);
   }
@@ -108,6 +109,7 @@ V.student = arg => {
     <div class="row"><div>${f('bform', 'B-Form / CRC No.', 'inputmode="numeric" placeholder="xxxxx-xxxxxxx-x"')}</div><div>${sel('religion', 'Religion', RELIGIONS)}</div></div>
     <div class="row"><div>${sel('mother_tongue', 'Mother tongue', TONGUES, '—')}</div><div>${f('nationality', 'Nationality')}</div></div>
     <div class="row"><div>${sel('orphan', 'Orphan', ['No', 'Yes'])}</div><div>${sel('disability', 'Disability', DISABILITIES)}</div></div>
+    <div class="row"><div><label>1989 refugee (fee exempt)</label><select name="refugee">${opts([['', 'No'], ['Yes', 'Yes']], s.refugee || '')}</select></div><div id="refw" ${s.refugee === 'Yes' ? '' : 'hidden'}>${f('refugee_card', 'Refugee card No. *')}</div></div>
     <h3>Family and contact</h3>
     <div class="row"><div>${f('father_cnic', "Father's / guardian's CNIC", 'inputmode="numeric" placeholder="xxxxx-xxxxxxx-x"')}</div><div>${f('mobile', 'Mobile (WhatsApp)', 'inputmode="tel"')}</div></div>
     <div class="row"><div>${f('guardian_name', 'Guardian (if not father)')}</div><div>${f('guardian_relation', 'Relation')}</div></div>
@@ -131,6 +133,7 @@ BIND.student = arg => {
   const form = $('#sf'); if (!form) return;
   const q = n => form.querySelector(`[name="${n}"]`);
   q('prev_type').onchange = () => { $('#prevw').hidden = q('prev_type').value !== PREV_TYPES[1]; };
+  q('refugee').onchange = () => { $('#refw').hidden = q('refugee').value !== 'Yes'; };
   $('#docs').querySelectorAll('button').forEach(b => b.onclick = () => b.classList.toggle('on'));
   $('#gsel').querySelectorAll('button').forEach(b => b.onclick = () => { q('gender').value = b.dataset.v; $('#gsel').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#gsel').classList.remove('need'); });
   const cnicFmt = v => { const d = v.replace(/\D/g, ''); return d.length === 13 ? d.slice(0, 5) + '-' + d.slice(5, 12) + '-' + d.slice(12) : v.trim(); };
@@ -147,6 +150,8 @@ BIND.student = arg => {
     if (s.bform && !/^\d{5}-\d{7}-\d$/.test(s.bform)) return toast('B-Form No. should have 13 digits');
     if (s.father_cnic && !/^\d{5}-\d{7}-\d$/.test(s.father_cnic)) return toast('CNIC should have 13 digits');
     if (s.mobile && !/^0\d{10}$/.test(s.mobile)) return toast('Mobile should be 11 digits starting with 0');
+    if (s.refugee === 'Yes' && !s.refugee_card) return toast('1989 refugee: write the refugee card number');
+    if (s.refugee !== 'Yes') s.refugee_card = '';
     const isNew = arg.mode === 'new';
     if (isNew) {
       if (REG.students().some(x => x.adm_no === s.adm_no)) return toast('Admission No. ' + s.adm_no + ' is already in the register');
@@ -263,7 +268,7 @@ BIND.simport = () => {
 };
 const STU = {
   template() {
-    const head = IMPORT_COLS.map(c => c[1]); const ex = ['EXAMPLE – delete this row', '2024-04-01', 'MUHAMMAD AHMAD', 'محمد احمد', 'ABDUL RASHID', 'عبدالرشید', 'Male', '2018-03-15', 'I', 'A', '1', '34601-1234567-1', '34601-7654321-1', '03001234567', 'Islam', 'Mohallah …, village …', '', 'No', 'None', ''];
+    const head = IMPORT_COLS.map(c => c[1]); const ex = ['EXAMPLE – delete this row', '2024-04-01', 'MUHAMMAD AHMAD', 'محمد احمد', 'ABDUL RASHID', 'عبدالرشید', 'Male', '2018-03-15', 'I', 'A', '1', '34601-1234567-1', '34601-7654321-1', '03001234567', 'Islam', 'Mohallah …, village …', '', 'No', 'None', '', 'No', ''];
     const q = v => '"' + String(v).replace(/"/g, '""') + '"';
     const csv = '﻿' + [head.map(q).join(','), ex.map(q).join(',')].join('\r\n') + '\r\n';
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = 'Students_' + S.emis + '.csv'; a.click();

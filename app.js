@@ -158,7 +158,7 @@ function render() {
   if (!S.token) { document.body.classList.remove('wide', 'nav'); $('#side').hidden = true; $('#menu').hidden = true; $('#title').textContent = 'School Data · DEO Muzaffarabad'; $('#back').hidden = true; app.innerHTML = V.login(); bindLogin(); showSync(); return; }
   document.body.classList.add('nav'); $('#side').hidden = false; $('#menu').hidden = false;
   document.body.classList.toggle('viewer', role() === 'VIEWER');
-  document.body.classList.toggle('wide', ['home', 'reports', 'report', 'institutions', 'search', 'review', 'approvals', 'attmonth', 'timetable', 'ttprint', 'impl', 'cert'].includes(S.view));
+  document.body.classList.toggle('wide', ['home', 'reports', 'report', 'institutions', 'search', 'review', 'approvals', 'attmonth', 'timetable', 'ttprint', 'impl', 'cert', 'mkgrid', 'mresult'].includes(S.view));
   $('#back').hidden = !S.stack.length;
   const i = inst();
   const TOP = { building: '', institutions: 'Institutions', search: 'Staff search', approvals: 'Approvals', review: 'Review', reports: 'Reports', report: 'Reports', settings: 'Settings', about: 'About' };
@@ -543,6 +543,7 @@ V.emp = arg => {
   <div><label>Current basic pay (Rs) *</label><input name="basic_pay" value="${esc(e.basic_pay)}" inputmode="numeric"></div></div>
   <div class="row"><div><label>Employment status</label><select name="service_status">${opts(STATUS, e.service_status)}</select></div>
   <div><label>Joined this institution on *</label><input type="date" name="joined_on" value="${esc(e.joined_on)}"></div></div>
+  <label>Order No. and date of posting to this institution</label><input name="join_order" id="jord" placeholder="e.g. DEO 11954-55 dt 15-11-2019" value="">
   <label>Present duty status</label><select name="duty_status">${opts(DUTY, e.duty_status)}</select>
   <label>Actually working at (only if attached elsewhere)</label><input name="working_at" value="${esc(e.working_at)}">
   ${placementBlock(e, posts)}
@@ -603,7 +604,10 @@ BIND.emp = async arg => {
       const j = await api('searchEmployee', { q: arg.cnic });
       const f = j.found && j.found[0];
       if (f && $('#histbox')) {
-        $('#histbox').innerHTML = histEditor(f.promotions, f.postings);
+        // the posting at this institution is entered in the box under the joining date, not in the history
+        const here = f.postings.filter(x => x.station === S.emis && !x.to_date).pop();
+        if (here && $('#jord') && !$('#jord').value) $('#jord').value = here.order_no || '';
+        $('#histbox').innerHTML = histEditor(f.promotions, f.postings.filter(x => x !== here));
         histLoaded = true;
       }
     } catch (e) { }
@@ -633,11 +637,13 @@ BIND.emp = async arg => {
     if (f.charge_type && f.charge_post_id === f.post_id) return toast('Charge post cannot be the post occupied');
     if (f.charge_post_id) f.charge_designation = (d.posts.find(x => x.post_id === f.charge_post_id) || {}).designation || '';
     if (!f.personal_bps) f.personal_bps = '';
+    const joinOrder = (f.join_order || '').trim(); delete f.join_order;
+    if (!histLoaded && joinOrder) return toast('Open this record with internet once, so the posting order can be saved with the service history');
     const payload = { mode: isNew ? 'new' : 'update', employee: f };
     if (histLoaded) {
       payload.promotions = readHist('p');
-      const posts = readHist('t').filter(x => x.station !== S.emis);
-      posts.push({ station: S.emis, station_name: inst().name, designation: f.designation, from_date: f.joined_on, to_date: '', order_no: '' });
+      const posts = readHist('t').filter(x => !(x.station === S.emis && !x.to_date));   // earlier postings, including any earlier spell at this institution
+      posts.push({ station: S.emis, station_name: inst().name, designation: f.designation, from_date: f.joined_on, to_date: '', order_no: joinOrder });   // keeps the order No. of the present posting
       payload.postings = posts;
     }
     queue('saveEmployee', payload, 'Employee: ' + f.name);
@@ -730,17 +736,21 @@ BIND.enrol = () => {
     const note = $('#nf p.muted'); if (note && fromReg) note.innerHTML = 'Figures are counted from the <b>student register</b> for the month chosen. If a figure is wrong, correct the register (admit or record leaving) and come back; then press Save.';
     const g = c => src.find(r => r.class === c) || {};
     const st = (d.enrolment.find(r => r.month === m) || {}).status;
-    $('#nt').innerHTML = `<tr><th>Class</th><th>Boys</th><th>Girls</th><th>New adm.</th></tr>` + cls.map(c =>
+    $('#nt').innerHTML = `<tr><th>Class</th><th>Boys</th><th>Girls</th><th>New adm.</th><th title="1989 refugees, exempt from fees">Refugees<br><small>of all</small></th><th>Refugees<br><small>of new</small></th></tr>` + cls.map(c =>
       `<tr><td>${c}</td><td><input data-c="${c}" data-k="boys" value="${esc(g(c).boys || 0)}" inputmode="numeric"></td>
       <td><input data-c="${c}" data-k="girls" value="${esc(g(c).girls || 0)}" inputmode="numeric"></td>
-      <td><input data-c="${c}" data-k="new_admissions" value="${esc(g(c).new_admissions || 0)}" inputmode="numeric"></td></tr>`).join('') +
-      `<tr><td colspan="4" class="muted">${st ? 'Status: ' + esc(st) : prefilled ? 'Not yet entered for this month' : ''}</td></tr>`;
+      <td><input data-c="${c}" data-k="new_admissions" value="${esc(g(c).new_admissions || 0)}" inputmode="numeric"></td>
+      <td><input data-c="${c}" data-k="refugees" value="${esc(g(c).refugees || 0)}" inputmode="numeric"></td>
+      <td><input data-c="${c}" data-k="refugee_adm" value="${esc(g(c).refugee_adm || 0)}" inputmode="numeric"></td></tr>`).join('') +
+      `<tr><td colspan="6" class="muted">1989 refugees are exempt from tuition, admission fee and annual fund. ` + `</td></tr><tr><td colspan="6" class="muted">${st ? 'Status: ' + esc(st) : prefilled ? 'Not yet entered for this month' : ''}</td></tr>`;
   };
   $('#nm').onchange = draw; draw();
   $('#ns').onclick = () => {
     const m = $('#nm').value, rows = cls.map(c => {
       const o = { class: c }; document.querySelectorAll(`[data-c="${c}"]`).forEach(el => { o[el.dataset.k] = Number(el.value) || 0; }); return o;
     });
+    const bad = rows.find(r => r.refugees > r.boys + r.girls || r.refugee_adm > r.new_admissions || r.refugee_adm > r.refugees);
+    if (bad) return toast('Class ' + bad.class + ': refugees cannot be more than the students (or new admissions)');
     queue('saveEnrolment', { emis: S.emis, month: m, rows }, 'Enrolment ' + monthLabel(m));
     d.enrolment = d.enrolment.filter(r => r.month !== m).concat(rows.map(r => Object.assign({ month: m, status: 'Not sent yet' }, r)));
     saveD(d); back();
@@ -759,10 +769,10 @@ function expected(d, m) {
   rows.forEach(r => {
     if (r.class === 'ECE') return;   // no fee in principle (same rule as the server)
     const i = CLASSES.indexOf(r.class), lv = i <= 5 ? 'Primary' : i <= 8 ? 'Middle' : i <= 10 ? 'High' : 'Inter', f = meta.fees[lv];
-    const n = Number(r.boys || 0) + Number(r.girls || 0), a = Number(r.new_admissions || 0);
+    const all = Number(r.boys || 0) + Number(r.girls || 0), n = Math.max(0, all - Number(r.refugees || 0)), a = Math.max(0, Number(r.new_admissions || 0) - Number(r.refugee_adm || 0));   // 1989 refugees exempt (not from scout fund)
     ex.tuition += n * f.tuition; ex.admission += a * f.admission;
     ex.annual_fund += (m === feeSession(m) ? n : a) * f.annual_fund;
-    if (i >= 3) ex.scout_fund += n * (i >= 11 ? meta.scout.inter : meta.scout.low);
+    if (i >= 3) ex.scout_fund += all * (i >= 11 ? meta.scout.inter : meta.scout.low);
   });
   return { ex, has: rows.length > 0 };
 }
@@ -777,6 +787,7 @@ function feeRatesCard() {
     <li><b>Tuition</b> every month from every enrolled student. <b>Admission fee</b> only from newly admitted students.</li>
     <li><b>Annual fund</b> from every enrolled student at the start of the school year (March), and from children admitted later, with their admission fee.</li>
     <li><b>Scout fund</b> shared 40% school, 10% DEO / District Scouts Commissioner, 50% provincial.</li>
+    <li>${esc(n.refugees || '1989 refugees are exempt from tuition, admission fee and annual fund.')}</li>
     <li>${esc(n.ece || 'ECE: no fee in principle.')}</li></ul>
     <p class="muted">${esc(n.rates || '')}. Scout fund: ${esc(n.scout || '')}. All amounts in rupees.</p></div>`;
 }
@@ -789,6 +800,7 @@ V.fees = () => {
   <label>Month</label><select id="fm">${opts(months.map(m => [m, monthLabel(m)]), months[0])}</select>
   <div id="fx"></div><button class="btn full" id="fs">Save collection</button></div>
   <div class="card" id="fo"></div>
+  ${challanCard(d)}
   ${feeRatesCard()}
   <div class="card"><h2>Deposits (challans)</h2><div id="fd"></div><button class="btn" onclick="go('deposit')">+ Add challan</button><div class="list">${deps || '<p class="muted">No deposit recorded.</p>'}</div></div>`;
 };
@@ -867,7 +879,8 @@ V.results = () => {
   const d = D(); if (!d) return noData();
   const cls = classesFor(d.inst.level).filter(c => c !== 'ECE');
   const done = d.results.map(r => `<span class="badge ${r.status === 'Submitted' ? 'w' : 'o'}">${esc(r.exam)} · ${esc(r.class)}${r.group ? ' ' + esc(r.group) : ''}</span>`).join(' ');
-  return `<div class="card" id="rf"><h2>Exam results (class-wise)</h2><div class="ur">نتائج</div>
+  return `<div class="card"><h2>Marks of each student</h2><div class="ur">طلبہ کے نمبر اور رزلٹ کارڈ</div><p class="muted">Enter each student's marks subject by subject; the app works out the class result, positions and result cards, and the class summary for the district. This replaces the summary below for classes whose students are on the register.</p><button class="btn" onclick="go('marks')">Enter marks / result cards</button></div>
+  <div class="card" id="rf"><h2>Class summary (only if the student register is not complete)</h2><div class="ur">نتائج</div>
   <label>Examination</label><select id="rx">${opts(examList())}</select><label>Class</label><select id="rc">${opts(cls)}</select>
   <div id="rgw"></div>
   <p class="muted">For each subject, enter how many students fell in each band of marks: A+ 80% and above, A 70–79, B 60–69, C 50–59, D 40–49, E 33–39, F below 33.
@@ -1057,7 +1070,7 @@ const NAV = (() => {
           { id: 'istudents', label: 'Students', icon: 'students', on: ['students', 'student', 'sleft', 'sprint'].includes(S.view), go: () => jump('students') },
           { id: 'ienrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
           { id: 'ifees', label: 'Fees', icon: 'fees', on: S.view === 'fees', go: () => jump('fees') },
-          { id: 'iresults', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },
+          { id: 'iresults', label: 'Results', icon: 'results', on: ['results', 'marks', 'mksub', 'mkgrid', 'mresult'].includes(S.view), go: () => jump('results') },
           { id: 'ibuilding', label: 'Building', icon: 'building', on: S.view === 'building', go: () => jump('building') },
           { id: 'ismc', label: 'School committee (SMC)', icon: 'smc', on: ['smc', 'smcm', 'smcmeet'].includes(S.view), go: () => jump('smc') }])
       ] : []),
@@ -1075,7 +1088,7 @@ const NAV = (() => {
       { id: 'students', label: 'Students', icon: 'students', on: ['students', 'student', 'withdraw', 'slc', 'simport', 'sleft', 'sprint'].includes(S.view), go: () => jump('students') },
       { id: 'enrol', label: 'Enrolment', icon: 'enrol', on: S.view === 'enrol', go: () => jump('enrol') },
       { id: 'fees', label: primary ? 'Fees (by AEO)' : 'Fees', icon: 'fees', on: S.view === 'fees' || S.view === 'deposit', go: () => jump('fees') },
-      { id: 'results', label: 'Results', icon: 'results', on: S.view === 'results', go: () => jump('results') },
+      { id: 'results', label: 'Results', icon: 'results', on: ['results', 'marks', 'mksub', 'mkgrid', 'mresult'].includes(S.view), go: () => jump('results') },
       { id: 'building', label: 'Building', icon: 'building', on: S.view === 'building', go: () => jump('building') },
       { id: 'smc', label: 'School committee (SMC)', icon: 'smc', on: ['smc', 'smcm', 'smcmeet'].includes(S.view), go: () => jump('smc') },
       { id: 'reports', label: 'Reports', icon: 'report', on: S.view === 'reports' || S.view === 'report', go: () => jump('reports') },
@@ -1247,6 +1260,7 @@ const RMETA = {
   attendance: { g: 1, d: 'Staff and student attendance by institution, this month and last.', k: [['Staff present', 'avg%', 'Staff present %'], ['Students present', 'avg%', 'Student attendance %'], ['Late arrivals', 'sum', 'Late arrivals'], ['Absent without leave (staff-days)', 'sum', 'Absent without leave (staff-days)']] },
   attendance_staff: { g: 1, d: 'This month, employee by employee: days present, late, absent and on leave.', k: [['Employees', 'count'], ['Late arrivals', 'sum', 'Late arrivals'], ['Days absent without leave', 'sum', 'Days absent without leave']] },
   fees: { g: 2, d: 'Fees expected from enrolment, collected and deposited, month by month.', k: [['Expected (Rs)', 'sum', /^Expected/], ['Collected (Rs)', 'sum', /^Collected/], ['Short (Rs)', 'sum', 'SHORT COLLECTION (sum of heads)'], ['Not deposited, A/C 101 (Rs)', 'sum', 'NOT DEPOSITED A/C 101']] },
+  refugees: { g: 2, d: '1989 refugees exempted from tuition, admission fee and annual fund, by institution.', k: [['Institutions', 'count'], ['Refugees exempt', 'sum', '1989 refugees (exempt)']] },
   feerates: { g: 2, noTotal: true, d: 'Tuition, admission, annual fund and scout fund rates by class, with the notification.', k: [] },
   annualfund: { g: 2, d: 'Annual fund for the whole school year against what is due.', k: [['Due (Rs)', 'sum', 'Annual fund due'], ['Collected (Rs)', 'sum', /Collected before the app|Recorded in the app/], ['Difference (Rs)', 'sum', 'Difference (+ excess / - short)']] },
   results: { g: 3, d: 'Results by school, class and subject, in grade bands.', k: [['Appeared', 'sum', 'Appeared'], ['Passed', 'sum', 'Passed'], ['Pass rate', 'pct', ['Passed', 'Appeared']], ['Institutions', 'distinct', 'EMIS']] },
@@ -1306,7 +1320,7 @@ V.report = arg => { const m = RMETA[arg.id] || {}, t = ((LS.get('reports_list', 
   return `<div class="card noprint rtop"><h2 id="rtitle">${esc(t)}</h2><p class="muted">${esc(m.d || '')}</p>
   ${role() !== 'SCHOOL' ? chips('rh', HALQAS, LS.get('r_halqa', '')) + chips('rl', LEVELS, LS.get('r_level', '')) : ''}
   <div class="kfig" id="rk"></div>
-  <div class="rsearch"><input type="search" id="rs" class="search" placeholder="Search this report" autocomplete="off"><span class="rbtn"><button class="btn alt" onclick="REP.csv()">CSV</button><button class="btn alt" onclick="window.print()">Print</button></span></div></div>
+  <div class="rsearch"><input type="search" id="rs" class="search" placeholder="Search this report" autocomplete="off"><span class="rbtn"><button class="btn alt" onclick="REP.csv()">CSV</button><button class="btn alt" onclick="REP.pdf()">PDF</button><button class="btn alt" onclick="REP.print()">Print</button></span></div></div>
   <div class="card rprint"><h3 class="ponly" id="rtitle2">${esc(t)}</h3><div class="rwrap"><table class="rtable" id="rt"><tbody><tr><td class="muted">${navigator.onLine ? 'Loading…' : ''}</td></tr></tbody></table></div>
   <p class="muted" id="rcount"></p><p class="muted rnote" id="rnote"></p></div>`; };
 BIND.report = async arg => {
@@ -1326,9 +1340,11 @@ BIND.report = async arg => {
     let rows = r.rows.filter(x => !words.length || words.every(w => x.some(v => String(dmy(v)).toLowerCase().includes(w))));
     if (sortJ >= 0) rows = rows.slice().sort((a, b) => { const x = a[sortJ], y = b[sortJ]; return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })) * sortDir; });
     REP.rows = rows;
-    $('#rk').innerHTML = repKeys(r, rows, meta).map(([l, v]) => `<div><b>${esc(fmtN(v))}</b><span>${esc(l)}</span></div>`).join('');
+    REP.keys = repKeys(r, rows, meta);
+    $('#rk').innerHTML = REP.keys.map(([l, v]) => `<div><b>${esc(fmtN(v))}</b><span>${esc(l)}</span></div>`).join('');
     const SUMMABLE = /sanctioned|filled|vacant|excess|of filled|held on current|expected|collected|deposited|short|not deposited|students|enrolled|boys|girls|admitted|left last|dropouts|orphans|disability|with b-form|annual fund|recorded|difference|opening|^ece$|^[ivx]+$|days|present|absent|late|leave|early|marked|appeared|passed|honorarium|meetings/i;
     const tot = r.head.map((h, j) => SUMMABLE.test(h) && !/bps|%|rate|reason|halqa|level|designation|month|updated/i.test(h) && rows.some(x => typeof x[j] === 'number') ? rows.reduce((a, x) => a + (typeof x[j] === 'number' ? x[j] : 0), 0) : null);
+    REP.tot = !meta.noTotal && rows.length > 1 && tot.some(v => v !== null) ? tot : null;
     const totRow = !meta.noTotal && rows.length > 1 && tot.some(v => v !== null) ? `<tfoot><tr>${tot.map((v, j) => `<td class="num">${j === 0 ? 'Total' : v === null ? '' : fmtN(v)}</td>`).join('')}</tr></tfoot>` : '';
     $('#rt').innerHTML = `<thead><tr>${r.head.map((h, j) => `<th data-j="${j}" class="${j === sortJ ? (sortDir > 0 ? 'asc' : 'desc') : ''}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 1500).map(row =>
       `<tr>${row.map((v, j) => `<td class="${typeof v === 'number' ? 'num ' : ''}${cueOf(r.head[j], v)}">${esc(typeof v === 'number' ? fmtN(v) : dmy(v))}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${r.head.length}" class="muted">No row matches.</td></tr>`}</tbody>${totRow}`;

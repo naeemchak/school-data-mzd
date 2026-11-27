@@ -60,6 +60,13 @@ header h1{cursor:pointer}
 .gsel.need{box-shadow:0 0 0 3px #e0a12a}
 .feerates .ftab{width:100%;border-collapse:collapse;margin:8px 0}.feerates .ftab th,.feerates .ftab td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left}.feerates .ftab .num{text-align:right;font-variant-numeric:tabular-nums}.feerates .ftab th{font-size:12.5px;color:var(--mute);font-weight:600;vertical-align:bottom}.feerates .ftab small{font-weight:400}
 .feerates .fnotes{margin:6px 0 8px;padding-left:18px;font-size:13.5px;line-height:1.5}.feerates .fnotes li{margin:3px 0}
+.chm{display:flex;flex-wrap:wrap;gap:6px}.chm button{font:inherit;border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 11px;cursor:pointer}.chm button.on{background:var(--brand);border-color:var(--brand);color:#fff}.chm button:disabled{opacity:.45;cursor:default}.chm small{display:block;font-size:11px;opacity:.8}
+.chh{display:grid;gap:4px;margin:4px 0}.chdue{margin:4px 0 0;padding-left:18px}.chbtn{display:flex;gap:6px;flex-wrap:wrap}.chbtn .btn{margin:0;padding:7px 11px;font-size:13px}.chtab{margin-top:10px}
+.mkrows{display:grid;gap:2px}.mkr{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid var(--line)}.mkr .grow b{display:block;font-weight:500}.mkr small{color:var(--mute);font-size:12px}
+.mkroll{width:28px;color:var(--mute);font-size:13px;text-align:right}.mkr input,.mkr select{width:74px;text-align:center;font-size:17px;padding:8px 4px;margin:0}.mkr input.bad,.mkgrid input.bad{border-color:#c0392b;background:#fdecea}
+.mkgrid input{width:52px;text-align:center;padding:5px 2px;margin:0}.mkgrid th small{font-weight:400;color:var(--mute)}.btn.sm{padding:5px 9px;font-size:12.5px;margin:0}.nowrap{white-space:nowrap}.nowrap input{width:46px;padding:4px;margin:0}
+#mrt td input[data-f="remark"]{min-width:140px;margin:0;padding:5px}#mrt select{margin:0;padding:5px}.sub.warn{color:#a05a00}
+@media (max-width:899px){.wideonly{display:none}}
 .ksel{display:grid;gap:8px;margin:4px 0 12px;border-radius:14px;transition:box-shadow .2s}.ksel.need{box-shadow:0 0 0 3px #e0a12a}
 .ksel button{font:inherit;text-align:left;border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:10px 12px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
 .ksel button span{font-size:12.5px;color:var(--mute)}.ksel button.on{background:var(--brand);border-color:var(--brand);color:#fff}.ksel button.on span{color:#d9e8df}
@@ -391,6 +398,9 @@ body.viewer .decide,body.viewer .fixbox,body.viewer #cfs{display:none!important}
 <script src="staffing.js"></script>
 <script src="timetable.js"></script>
 <script src="impl.js"></script>
+<script src="pdf.js"></script>
+<script src="challan.js"></script>
+<script src="marks.js"></script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>
