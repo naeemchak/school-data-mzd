@@ -47,6 +47,17 @@ const PDFK = {
     d.addImage(c.toDataURL('image/png'), 'PNG', x0, y - hm * 0.62, wm, hm, undefined, 'FAST');
     return wm;
   },
+  /** an Urdu paragraph wrapped to width (mm), right-aligned, from top y. Returns the height used (mm) */
+  urPara(d, text, x, y, width, sizePt, color) {
+    const sc = 4, px = sizePt * 1.333 * sc, g = document.createElement('canvas').getContext('2d'), mmPerPx = 25.4 / 96 / sc;
+    g.font = `400 ${px}px Naskh, "Noto Naskh Arabic", serif`;
+    const lines = []; let cur = '';
+    String(text || '').split(/\s+/).forEach(w => { const t = cur ? cur + ' ' + w : w; if (g.measureText(t).width * mmPerPx > width && cur) { lines.push(cur); cur = w; } else cur = t; });
+    if (cur) lines.push(cur);
+    const lh = sizePt * 0.3528 * 1.9;
+    lines.forEach((l, k) => PDFK.ur(d, l, x + width, y + lh * (k + 0.6), sizePt, 'right', false, color));
+    return lines.length * lh;
+  },
   /** a table with wrapping cells, repeated heading and page breaks. cols: [{h, w, align}] (w in mm). Returns the y after the table */
   table(d, o) {
     const fs = o.fs || 8, lh = fs * 0.3528 * 1.18, pad = o.pad || 1.1, pw = d.internal.pageSize.getWidth(), ph = d.internal.pageSize.getHeight(), bottom = o.bottom || ph - 12;
@@ -66,8 +77,11 @@ const PDFK = {
       if (o.bold && o.bold(r, i)) d.setFont('helvetica', 'bold');
       if (o.shade && o.shade(r, i)) { d.setFillColor(...o.shade(r, i)); d.rect(x0, y, o.cols.reduce((s, c) => s + c.w, 0), rh, 'F'); }
       let x = x0; o.cols.forEach((c, j) => {
+        if (o.draw && o.draw(d, r, i, j, x, y, c.w, rh, pad, lh)) { x += c.w; return; }   // custom cell (symbols)
+        const col = o.color && o.color(r, i, j); if (col) d.setTextColor(...col);
         if (PDFK.isUrdu(r[j])) PDFK.ur(d, r[j], x + c.w - pad, y + rh / 2 + 0.6, fs + 1, 'right', false);
         else d.text(ls[j], c.align === 'right' ? x + c.w - pad : x + pad, y + pad + lh * 0.8, { align: c.align === 'right' ? 'right' : 'left' });
+        if (col) d.setTextColor(0);
         x += c.w; });
       d.setFont('helvetica', 'normal'); d.setDrawColor(215); d.line(x0, y + rh, x0 + o.cols.reduce((s, c) => s + c.w, 0), y + rh); y += rh;
     });

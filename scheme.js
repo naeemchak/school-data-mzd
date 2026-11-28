@@ -37,7 +37,7 @@ const SCHEME = (() => {
   function forClass(cls) {
     if (['I', 'II', 'III'].includes(cls)) return { groups: [''], get: () => ({ fixed: I_III, electives: [], grades: G1 }) };
     if (['IV', 'V'].includes(cls)) return { groups: [''], get: () => ({ fixed: IV_V, electives: [], grades: G1 }) };
-    if (['VI', 'VII', 'VIII'].includes(cls)) return { groups: [''], get: () => ({ fixed: VI_VIII, electives: OPT_VI_VIII, electiveMax: 75, grades: G2 }) };
+    if (['VI', 'VII', 'VIII'].includes(cls)) return { groups: [''], get: () => ({ fixed: VI_VIII, electives: OPT_VI_VIII, electiveMax: 75, electiveReq: 1, grades: G2 }) };
     if (['IX', 'X'].includes(cls)) return {
       groups: ['Science', 'General (Humanities)', 'Matric Tech'],
       get: g => g === 'Science'
