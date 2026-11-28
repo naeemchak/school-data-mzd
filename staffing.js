@@ -18,7 +18,7 @@ BIND.receive = () => {
       if (!j.ok) throw new Error(j.error);
       if (!j.found) { $('#rr').innerHTML = `<div class="msg w">No record found. If the employee comes from outside the district or has never been entered, make a first-time entry.</div><button class="btn" onclick="S.stack.pop();go('emp',{mode:'new'})">First-time entry</button>`; return; }
       const P = j.person;
-      const who = `<div class="hist"><b>${esc(P.name)}</b> s/o ${esc(P.father_name)}<div class="sub">Present posting: ${esc(P.station)}</div></div>`;
+      const who = `<div class="hist"><b>${esc(P.name)}</b> ${rel(P.gender)} ${esc(P.father_name)}<div class="sub">Present posting: ${esc(P.station)}</div></div>`;
       if (j.here) { $('#rr').innerHTML = who + '<div class="msg o">Already at this institution.</div>'; return; }
       const attach = `<details class="att"><summary>Attach as surplus (needs the DEO's approval)</summary>
         <p class="muted">For an employee who is surplus and is attached to this institution although it has no post for him, so that his attendance is marked here. He is flagged as surplus.</p>

@@ -12,6 +12,8 @@ const S = { operator: LS.get('operator', ''), token: LS.get('token'), user: LS.g
 
 /* ---------------- helpers ---------------- */
 const $ = s => document.querySelector(s);
+/** son of / daughter of, from the gender recorded */
+const rel = g => /^f/i.test(String(g || '')) ? 'd/o' : 's/o';
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };   // local date, not UTC
@@ -331,7 +333,7 @@ V.staff = () => {
   <div class="list">${list || '<p class="muted">No employee on the register yet. Use “First-time entry” for each employee who is not yet in the database.</p>'}</div></div>
   <div class="card"><div class="db-sh rhead"><h3>Staff not on posts (${(d.community || []).length})</h3><span class="rbtn"><button class="btn alt" onclick="go('ct',{})">+ Add</button></span></div>
   <p class="muted">Community Teachers, contingent paid staff (Naib Qasid, Chowkidar…) and others working here without a sanctioned post. Not counted against posts; marked in attendance. Government employees go in the register above.</p>
-  ${(d.community || []).length ? `<div class="list">${d.community.map(c => `<div class="it tap" onclick="go('ct',{id:'${esc(c.id)}'})"><div class="grow"><b>${esc(c.name)}</b> <span class="muted">s/o ${esc(c.father_name)}</span><div class="sub">${(c.kind || 'Community Teacher') === 'Community Teacher' ? 'Community Teacher' + (c.subject ? ' · ' + esc(c.subject) : '') : esc(c.job || c.kind) + ' · ' + esc(c.kind)}${c.paid_by ? ' · paid from ' + esc(c.paid_by) : ''}${c.honorarium ? ' · Rs ' + esc(c.honorarium) : ''}</div></div><span class="badge ${c.status === 'Approved' || c.status === 'Accepted' ? 'o' : 'w'}">${c.status === 'Approved' || c.status === 'Accepted' ? 'Verified' : c.status === 'Returned' ? 'Returned' : 'Unverified'}</span><span class="chev">›</span></div>`).join('')}</div>` : ''}</div>
+  ${(d.community || []).length ? `<div class="list">${d.community.map(c => `<div class="it tap" onclick="go('ct',{id:'${esc(c.id)}'})"><div class="grow"><b>${esc(c.name)}</b> <span class="muted">${rel(c.gender)} ${esc(c.father_name)}</span><div class="sub">${(c.kind || 'Community Teacher') === 'Community Teacher' ? 'Community Teacher' + (c.subject ? ' · ' + esc(c.subject) : '') : esc(c.job || c.kind) + ' · ' + esc(c.kind)}${c.paid_by ? ' · paid from ' + esc(c.paid_by) : ''}${c.honorarium ? ' · Rs ' + esc(c.honorarium) : ''}</div></div><span class="badge ${c.status === 'Approved' || c.status === 'Accepted' ? 'o' : 'w'}">${c.status === 'Approved' || c.status === 'Accepted' ? 'Verified' : c.status === 'Returned' ? 'Returned' : 'Unverified'}</span><span class="chev">›</span></div>`).join('')}</div>` : ''}</div>
   ${out ? `<div class="card"><h2>Transfer of your staff: please confirm</h2><p class="muted">Another institution has asked for the record of these employees. Confirm the date of relieving, or reject if the employee has not been relieved or is the wrong person.</p><div class="list">${out}</div></div>` : ''}
   ${inc ? `<div class="card"><h2>Incoming transfers</h2><p class="muted">The record comes here after the outgoing institution confirms relieving and the AEO / DDEO / DEO office of both institutions approve.</p><div class="list">${inc}</div></div>` : ''}`;
 };
@@ -683,7 +685,7 @@ BIND.receive = () => {
       if (!j.found.length) { $('#rr').innerHTML = `<div class="msg w">No record found. If the employee comes from outside the district or has never been entered, make a first-time entry.</div><button class="btn" onclick="S.stack.pop();go('emp',{mode:'new'})">First-time entry</button>`; return; }
       const f = j.found[0], e = f.employee, d = D();
       const posts = d.posts.slice().sort((a, b) => b.bps - a.bps).map(p => [p.post_id, `${p.designation} (BPS-${p.bps})`]);
-      $('#rr').innerHTML = `<div class="hist"><b>${esc(e.name)}</b> s/o ${esc(e.father_name)}<div class="sub">${esc(e.own_designation || e.designation)} (own title) · BPS ${esc(e.own_bps || e.post_bps)} · now at ${esc(f.station_name)}</div>
+      $('#rr').innerHTML = `<div class="hist"><b>${esc(e.name)}</b> ${rel(e.gender)} ${esc(e.father_name)}<div class="sub">${esc(e.own_designation || e.designation)} (own title) · BPS ${esc(e.own_bps || e.post_bps)} · now at ${esc(f.station_name)}</div>
         <div class="sub">Born ${esc(dmy(e.dob))} · first appointed ${esc(dmy(e.first_appt_date))} as ${esc(e.first_designation)}</div>
         <div class="sub">Promotions: ${f.promotions.map(p => esc(p.to_designation) + ' (' + esc(dmy(p.date)) + ')').join('; ') || 'none'}</div>
         <div class="sub">Postings: ${f.postings.map(p => esc(p.station_name) + ' ' + esc(dmy(p.from_date)) + '–' + esc(dmy(p.to_date) || 'now')).join('; ')}</div></div>
@@ -1218,7 +1220,7 @@ BIND.search = () => {
         .slice(0, 60).map(e => Object.assign({ station: (im[e.emis] || {}).name || e.emis, halqa: (im[e.emis] || {}).halqa || '' }, e));
     }
     $('#sn').textContent = found.length ? `${found.length} found${offline ? ' (offline copy)' : ''}` : 'No match.';
-    $('#sr').innerHTML = found.map((e, k) => `<div class="it tap" onclick="openStaff(${k})"><div class="grow"><b>${esc(e.name)}</b> <span class="muted">s/o ${esc(e.father_name || '')}</span>
+    $('#sr').innerHTML = found.map((e, k) => `<div class="it tap" onclick="openStaff(${k})"><div class="grow"><b>${esc(e.name)}</b> <span class="muted">${rel(e.gender)} ${esc(e.father_name || '')}</span>
       <div class="sub">${esc(e.own_designation || e.designation)}${e.own_designation && e.own_designation !== e.designation ? ' · against ' + esc(e.designation) + ' post' : ''} · BPS ${esc(e.post_bps)}</div>
       <div class="sub">${esc(e.station)}${e.halqa ? ' · ' + esc(e.halqa) : ''} · ${esc(e.cnic)}${e.personnel_no ? ' · P.No ' + esc(e.personnel_no) : ''}</div></div>
       ${e.record_state === 'Left' ? `<span class="badge">${esc(e.duty_status || 'Left')}</span>` : `<span class="badge ${e.verified === 'Verified' ? 'o' : 'w'}">${e.verified === 'Verified' ? 'Verified' : 'Unverified'}</span>`}<span class="chev">›</span></div>`).join('');
@@ -1265,6 +1267,7 @@ const RMETA = {
   annualfund: { g: 2, d: 'Annual fund for the whole school year against what is due.', k: [['Due (Rs)', 'sum', 'Annual fund due'], ['Collected (Rs)', 'sum', /Collected before the app|Recorded in the app/], ['Difference (Rs)', 'sum', 'Difference (+ excess / - short)']] },
   results: { g: 3, d: 'Results by school, class and subject, in grade bands.', k: [['Appeared', 'sum', 'Appeared'], ['Passed', 'sum', 'Passed'], ['Pass rate', 'pct', ['Passed', 'Appeared']], ['Institutions', 'distinct', 'EMIS']] },
   results_summary: { g: 3, d: 'Pass rates by exam, class and subject across the area.', k: [['Appeared', 'sum', 'Appeared'], ['Passed', 'sum', 'Passed'], ['Pass rate', 'pct', ['Passed', 'Appeared']]] },
+  marksentry: { g: 5, d: 'Term-1 and Term-2 marks entered against subjects due, by institution; lowest first.', k: [['Institutions', 'distinct', 'EMIS'], ['Subjects due', 'sum', 'Subjects due'], ['Term-1 entered', 'pct', ['Term-1 entered', 'Subjects due']], ['Term-2 entered', 'pct', ['Term-2 entered', 'Subjects due']]] },
   teacher_results: { g: 3, d: 'Latest results linked to the teacher who taught the subject. Choose a Halqa and level first.', k: [['Teachers', 'distinct', 'Teacher'], ['Appeared', 'sum', 'Appeared'], ['Pass rate', 'pct', ['Passed', 'Appeared']]] },
   infrastructure: { g: 4, d: 'Buildings, rooms, water, electricity, toilets, furniture and location.', k: [['Profiles entered', 'countif', 'Profile status', v => v && v !== 'Not entered'], ['Dangerous buildings', 'countif', 'Condition', v => /^Dangerous/.test(v)], ['No electricity', 'countif', 'Electricity', v => v === 'No'], ['No drinking water', 'countif', 'Drinking water', v => v === 'No']] },
   smc: { g: 4, d: 'School Management Committees: members, chairperson and meetings.', k: [['Committees entered', 'countif', 'Committee entered', v => /^y/i.test(v)], ['Meetings in 12 months', 'sum', 'Meetings in last 12 months']] },
@@ -1397,7 +1400,7 @@ BIND.review = async x => {
   }
   if (x.sheet === 'CommunityTeachers') {
     const c = it.rows[0];
-    html = `<div class="kv2"><b>Type</b><span>${esc(c.kind || 'Community Teacher')}${c.job && c.job !== 'Teacher' ? ' · ' + esc(c.job) : ''}</span><b>Name</b><span>${esc(c.name)} s/o ${esc(c.father_name)}</span><b>CNIC</b><span>${esc(c.cnic || '–')}</span><b>Qualification</b><span>${esc(c.qualification || '–')}</span><b>Subject</b><span>${esc(c.subject || '–')}</span>
+    html = `<div class="kv2"><b>Type</b><span>${esc(c.kind || 'Community Teacher')}${c.job && c.job !== 'Teacher' ? ' · ' + esc(c.job) : ''}</span><b>Name</b><span>${esc(c.name)} ${rel(c.gender)} ${esc(c.father_name)}</span><b>CNIC</b><span>${esc(c.cnic || '–')}</span><b>Qualification</b><span>${esc(c.qualification || '–')}</span><b>Subject</b><span>${esc(c.subject || '–')}</span>
       <b>Paid by</b><span>${esc(c.paid_by || '–')}${c.paid_by_name ? ' (' + esc(c.paid_by_name) + ')' : ''}${c.honorarium ? ' · Rs ' + esc(c.honorarium) + ' a month' : ''}</span><b>Serving since</b><span>${esc(dmy(c.from_date))}</span>${c.order_no ? `<b>Order</b><span>${esc(c.order_no)}${c.order_date ? ' dated ' + esc(dmy(c.order_date)) : ''}</span>` : ''}<b>Mobile</b><span>${esc(c.mobile || '–')}</span></div>
       <p class="muted">Staff not on posts are not civil servants and are not counted against any post.</p>`;
   }

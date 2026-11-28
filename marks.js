@@ -107,6 +107,16 @@ const MK = {
     return out;
   },
   AVG_MIN: 10,
+  /** last dates for entering marks (DEO); from v4I these come from the Deadlines sheet */
+  DUE: { '2026-27 Term-1': '2026-12-31', '2026-27 Term-2 (Annual)': '2027-02-25' },
+  due(exam) { const m = S.boot && S.boot.meta && S.boot.meta.deadlines; return (m && m[exam]) || MK.DUE[exam] || ''; },
+  /** subjects (marks and graded) complete for every student of the class: {done, total} */
+  progress(c, d, exam) {
+    const st = MK.students(c, d), subs = MK.subjects(c, d).filter(x => x.kind === 'marks' && (!x.elective || st.some(s => MK.val(d, exam, s.adm_no, x.s) !== '')));   // marked subjects, as in the officers' report
+    const req = MK.req(c), el = MK.subjects(c, d).filter(x => x.kind === 'marks' && x.elective && st.some(s => MK.val(d, exam, s.adm_no, x.s) !== '')).length;
+    const total = subs.filter(x => !x.elective).length + req, ok = x => st.length && st.every(s => MK.val(d, exam, s.adm_no, x.s) !== '');
+    return { done: subs.filter(x => !x.elective && ok(x)).length + Math.min(req, subs.filter(x => x.elective && ok(x)).length), total, el };
+  },
   /** class averages over every section of the class (d.peers from the server; this section's marks offline). Only where AVG_MIN or more sat */
   avgs(c, d) {
     const src = d.peers && d.peers.length ? d.peers : d.marks.filter(m => m.kind !== 'grade'), annual = /Term-2/.test(c.exam), t1 = MK.t1of(c, d), L = MK.lk(src);
@@ -135,6 +145,21 @@ const MK = {
 };
 
 /* ---------- the hub: choose exam, class, section, group; subjects with progress ---------- */
+/* ---------- exam papers: attendance sheet and award list (blank or with the marks entered) ---------- */
+V.mpapers = () => {
+  const c = MK.ctx(); if (!c.exam) return '<div class="card"><p>Choose the examination and class first.</p></div>';
+  return `<div class="card"><h2>Exam papers</h2><p class="muted">${esc(MK.title(c))} · Class ${esc(c.class)}${c.section ? '-' + esc(c.section) : ''}${c.group ? ' (' + esc(c.group) + ')' : ''}. A4 PDFs from the student register; work without internet.</p>
+    <label>Subject</label><select id="pps"></select>
+    <div class="decide"><button class="btn" id="ppa">Attendance sheet</button><button class="btn alt" id="ppb">Award list (blank)</button><button class="btn alt" id="ppf">Award list (with marks)</button></div>
+    <p class="muted">Attendance sheet: for the exam hall, with a column for each student's signature. Award list (blank): for the examiner to write the marks. Award list (with marks): the marks entered in the app, to be signed by the examiner and kept on file.</p></div>`;
+};
+BIND.mpapers = async () => {
+  const c = MK.ctx(), d = await MK.load(c), subs = MK.subjects(c, d).filter(x => x.kind === 'marks');
+  $('#pps').innerHTML = opts([['*', 'All subjects (one page each)']].concat(subs.map((x, k) => [String(k), x.s + ' (' + x.max + ')'])), '*');
+  const pick = () => $('#pps').value === '*' ? subs : [subs[Number($('#pps').value)]];
+  $('#ppa').onclick = () => MKP.papers(c, d, pick(), 'att'); $('#ppb').onclick = () => MKP.papers(c, d, pick(), 'blank'); $('#ppf').onclick = () => MKP.papers(c, d, pick(), 'filled');
+};
+
 V.marks = () => {
   const d0 = D(); if (!d0) return noData();
   if (!REG.students().length) return '<div class="card"><h2>Marks of each student</h2><p>Register the students first (Students). Marks are entered against the student register.</p></div>';
@@ -159,10 +184,12 @@ BIND.marks = () => {
     const c = cur(); $('#mlist').innerHTML = '<p class="muted">Loading…</p>';
     const d = await MK.load(c), subs = MK.subjects(c, d), st = MK.students(c, d), el = MK.electives(c);
     const done = x => st.filter(s => MK.val(d, c.exam, s.adm_no, x.s) !== '').length;
-    $('#mlist').innerHTML = `<p class="muted">${st.length} students${d.offline ? ' · offline: showing what is on this phone' : ''}</p>
+    const pl = ex => { const p = MK.progress(c, d, ex), due = MK.due(ex); return `<div class="sub ${p.done < p.total ? 'warn' : ''}"><b>${esc(MK.title({ exam: ex }))}:</b> ${p.done} of ${p.total} subjects complete${due ? ' · last date ' + dmy(due) : ''}</div>`; };
+    const t1 = MK.t1of(c, d);
+    $('#mlist').innerHTML = `<p class="muted">${st.length} students${d.offline ? ' · offline: showing what is on this phone' : ''}</p>${st.length ? (t1 ? pl(t1) : '') + pl(c.exam) : ''}
       <div class="list">${subs.map((x, k) => { const n = done(x); return `<div class="it tap" onclick="go('mksub',{k:${k}})"><div class="grow"><b>${esc(x.s)}</b><div class="sub">${x.kind === 'grade' ? 'graded A–D' : 'out of ' + x.max}${x.elective ? ' · elective' : ''}</div></div><span class="badge ${n === st.length && n ? 'o' : n ? 'w' : ''}">${n}/${st.length}</span><span class="chev">›</span></div>`; }).join('')}</div>
       ${el.list.length ? `<label>${MK.req(c) ? 'Add the elective subject of this class (one is required)' : 'Add an elective / optional subject of this class'}</label><select id="mel">${opts(el.list.filter(x => !subs.some(s => s.s === x)), '', '— choose to add —')}</select>` : ''}
-      <div class="decide"><button class="btn" onclick="go('mresult')">Class result & result cards</button><button class="btn alt wideonly" onclick="go('mkgrid')">Enter as a grid</button></div>`;
+      <div class="decide"><button class="btn" onclick="go('mresult')">Class result & result cards</button><button class="btn alt wideonly" onclick="go('mkgrid')">Enter as a grid</button><button class="btn alt" onclick="go('mpapers')">Exam papers</button></div>`;
     const m = $('#mel'); if (m) m.onchange = () => { if (!m.value) return; const k = 'mkx_' + S.emis + '|' + c.class + '|' + (c.group || ''); const x = LS.get(k, []); x.push([m.value, el.max]); LS.set(k, x); draw(); };
   };
   $('#mx').onchange = draw; $('#mc').onchange = () => { selectors(); draw(); };
@@ -326,6 +353,46 @@ const MKP = {
       (annual && t1 ? ' تیر کے نشان پہلی ٹرم کے مقابلے میں دوسری ٹرم میں فیصد کا اضافہ یا کمی ظاہر کرتے ہیں۔' : '') + (avg ? ' سرمئی خانے میں جماعت (تمام سیکشن) کی اوسط درج ہے۔' : '');
   },
   t1total(d, s, ms) { let g = 0; ms.forEach(x => { const v = MK.val(d, d.term1, s.adm_no, x.s); if (v !== '' && v !== 'A') g += Number(v); }); return fmtN(g); },
+  /** marks in words: 33.5 → Thirty Three and a half */
+  mw(v) { const n = Number(v); if (!isFinite(n)) return ''; const i = Math.floor(n), h = n - i >= 0.5; return (i ? PDFK.words(i).replace(/^Rupees /, '').replace(/ only$/, '') : 'Zero') + (h ? ' and a half' : ''); },
+  async papers(c, d, subs, kind) {
+    try {
+      if (!subs.length) return toast('No subjects for this class');
+      const st = MK.students(c, d).filter(s => s.status !== 'Left').sort((a, b) => Number(a.roll_no || 9999) - Number(b.roll_no || 9999) || a.name.localeCompare(b.name));
+      if (!st.length) return toast('No students in this class');
+      const doc = await PDFK.doc(false), W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), D0 = D();
+      const cls = 'Class ' + c.class + (c.section ? '-' + c.section : '') + (c.group ? ' (' + c.group + ')' : '');
+      subs.forEach((x, k) => {
+        if (k) doc.addPage();
+        let y = MKP.head(doc, c, D0, 12, kind === 'att' ? 'EXAMINATION ATTENDANCE SHEET' : 'AWARD LIST');
+        doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.text(PDFK.t(`${cls}   ·   Subject: ${x.s}   ·   Maximum marks: ${x.max}`), 14, y); doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5); doc.text(kind === 'att' ? 'Date: __________  Time: ________' : 'Date of examination: __________', W - 14, y + 5, { align: 'right' }); y += 8;
+        let cols, rows;
+        if (kind === 'att') {
+          cols = [{ h: 'Roll', w: 11 }, { h: 'Adm. No.', w: 17 }, { h: 'Student', w: 46 }, { h: "Father's name", w: 42 }, { h: 'Signature of student', w: 50 }, { h: 'P / A', w: 16 }];
+          rows = st.map(s => [s.roll_no || '', s.adm_no, s.name, s.father_name || '', '', '']);
+        } else {
+          cols = [{ h: 'Roll', w: 11 }, { h: 'Adm. No.', w: 17 }, { h: 'Student', w: 42 }, { h: "Father's name", w: 34 }, { h: 'Marks (figures)', w: 18, align: 'right' }, { h: 'Marks (in words)', w: 40 }, { h: 'Remarks', w: 20 }];
+          rows = st.map(s => { const v = kind === 'filled' ? MK.val(d, c.exam, s.adm_no, x.s) : '';
+            return [s.roll_no || '', s.adm_no, s.name, s.father_name || '', v === 'A' ? 'Absent' : v, v && v !== 'A' ? MKP.mw(v) : '', v !== '' && v !== 'A' && Number(v) * 100 / x.max < MK.rules().pass_pct ? 'Fail' : '']; });
+        }
+        const tw = cols.reduce((a, q) => a + q.w, 0); cols.forEach(q => { q.w *= (W - 28) / tw; });
+        y = PDFK.table(doc, { x: 14, y, cols, rows, fs: 8.6, pad: kind === 'att' ? 2.4 : 1.8, top: 14 }) + 6;
+        if (y > H - 40) { doc.addPage(); y = 20; }
+        doc.setFontSize(9);
+        if (kind === 'filled') {
+          const v = st.map(s => MK.val(d, c.exam, s.adm_no, x.s)), ap = v.filter(q => q !== '' && q !== 'A'), pass = ap.filter(q => Number(q) * 100 / x.max >= MK.rules().pass_pct).length;
+          doc.text(PDFK.t(`Students ${st.length} · appeared ${ap.length} · absent ${v.filter(q => q === 'A').length} · not entered ${v.filter(q => q === '').length} · passed ${pass}${ap.length ? ' (' + Math.round(pass * 100 / ap.length) + '%)' : ''} · pass mark ${MK.rules().pass_pct}%`), 14, y); y += 7;
+        } else if (kind === 'blank') { doc.text('Students ______   Appeared ______   Absent ______   Passed ______', 14, y); y += 7; }
+        else { doc.text('Students ______   Present ______   Absent ______', 14, y); y += 7; }
+        y = Math.max(y + 12, H - 30);
+        const sg = kind === 'att' ? ['Invigilator (name and signature)', 'Head of institution'] : ['Examiner (name and signature)', 'Head of institution'];
+        doc.setDrawColor(90); sg.forEach((l, j) => { const x0 = j ? W - 14 - 70 : 14; doc.line(x0, y, x0 + 70, y); doc.setFontSize(8.5); doc.text(l, x0 + 35, y + 4, { align: 'center' }); });
+      });
+      PDFK.footer(doc, `${kind === 'att' ? 'Examination attendance sheet' : kind === 'blank' ? 'Award list (blank)' : 'Award list: marks as entered in the School Data app'} · ${cls} · ${MK.title(c)} · printed ${dmy(today())}`);
+      await PDFK.save(doc, `${kind === 'att' ? 'Attendance sheet' : 'Award list'} ${c.class}${c.section ? '-' + c.section : ''} ${MK.title(c)}${subs.length === 1 ? ' ' + subs[0].s : ''}`);
+    } catch (e) { toast(e.message || String(e)); }
+  },
   async sheet(c, d, R) {
     try {
       const rows = R.filter(r => r.max); if (!rows.length) return toast('No marks entered yet');

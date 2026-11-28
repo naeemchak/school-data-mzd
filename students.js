@@ -71,7 +71,7 @@ BIND.students = () => {
     $('#scls').querySelectorAll('button').forEach(b => b.onclick = () => { cls = b.dataset.c; LS.set('s_cls_' + S.emis, cls); draw(); });
     const list = all.filter(s => (!cls || q || s.class === cls) && (!q || (s.name + ' ' + s.father_name + ' ' + s.adm_no + ' ' + (s.roll_no || '')).toLowerCase().includes(q)));
     if ($('#scount')) $('#scount').textContent = `${all.length} enrolled · ${all.filter(s => s.gender !== 'Female').length} boys · ${all.filter(s => s.gender === 'Female').length} girls · ${all.filter(s => s.bform).length} with B-Form`;
-    $('#sl').innerHTML = list.slice(0, 400).map(s => `<div class="it tap" onclick="go('student',{mode:'edit',adm_no:'${esc(s.adm_no)}'})"><div class="grow"><b>${esc(s.name)}</b> <span class="muted">s/o ${esc(s.father_name)}</span>
+    $('#sl').innerHTML = list.slice(0, 400).map(s => `<div class="it tap" onclick="go('student',{mode:'edit',adm_no:'${esc(s.adm_no)}'})"><div class="grow"><b>${esc(s.name)}</b> <span class="muted">${rel(s.gender)} ${esc(s.father_name)}</span>
       <div class="sub">Adm. ${esc(s.adm_no)} · Class ${esc(s.class)}${s.section ? '-' + esc(s.section) : ''}${s.roll_no ? ' · Roll ' + esc(s.roll_no) : ''}${s.name_ur ? ' · <span class="ur2">' + esc(s.name_ur) + '</span>' : ''}</div></div>
       ${s._pending ? '<span class="badge w">Sending</span>' : ''}<span class="chev">›</span></div>`).join('') || (all.length ? '<p class="muted">No match.</p>' : '');
   };
@@ -167,7 +167,7 @@ BIND.student = arg => {
 /* ---------- correcting a new record ---------- */
 V.sfix = arg => {
   const s = REG.students().find(x => x.adm_no === arg.adm_no); if (!s) return '<div class="card"><p class="muted">Not found.</p></div>';
-  return `<div class="card"><h2>Correct a new record</h2><p class="muted"><b>${esc(s.name)}</b> s/o ${esc(s.father_name)} · Adm. ${esc(s.adm_no)} · Class ${esc(s.class)}</p>
+  return `<div class="card"><h2>Correct a new record</h2><p class="muted"><b>${esc(s.name)}</b> ${rel(s.gender)} ${esc(s.father_name)} · Adm. ${esc(s.adm_no)} · Class ${esc(s.class)}</p>
     <p class="muted">Allowed within 30 days of entering the student. After that, ask the supervising officer.</p></div>
     <form id="fxa" class="card"><h3>Wrong admission number</h3><p class="muted">Write the number as it is in the admission register. It must not be used by another student. Attendance already marked moves to the new number.</p>
       <label>Correct Admission No.</label><input name="nw" value="" inputmode="text" autocomplete="off">
@@ -193,7 +193,7 @@ BIND.sfix = arg => {
 /* ---------- leaving ---------- */
 V.withdraw = arg => {
   const s = REG.students().find(x => x.adm_no === arg.adm_no); if (!s) return '<div class="card"><p class="muted">Not found.</p></div>';
-  return `<form id="wf" class="card"><h2>Record leaving</h2><p class="muted"><b>${esc(s.name)}</b> s/o ${esc(s.father_name)} · Adm. ${esc(s.adm_no)} · Class ${esc(s.class)}</p>
+  return `<form id="wf" class="card"><h2>Record leaving</h2><p class="muted"><b>${esc(s.name)}</b> ${rel(s.gender)} ${esc(s.father_name)} · Adm. ${esc(s.adm_no)} · Class ${esc(s.class)}</p>
     <label>Date of leaving *</label><input name="left_date" type="date" value="${today()}" required>
     <label>Reason *</label><select name="left_reason">${opts(LEFT_REASONS, '', '— choose —')}</select>
     <div id="wdrop" hidden><label>Dropout reason *</label><select name="dropout">${opts(DROPOUT_REASONS, '', '— choose —')}</select></div>
@@ -218,7 +218,7 @@ BIND.withdraw = arg => {
 };
 
 V.sleft = () => { const l = ((REG.get() || {}).left || []).slice().sort((a, b) => b.left_date < a.left_date ? -1 : 1);
-  return `<div class="card"><h2>Students who left</h2>${l.length ? `<div class="list">${l.map(s => `<div class="it tap" onclick="go('student',{mode:'edit',adm_no:'${esc(s.adm_no)}'})"><div class="grow"><b>${esc(s.name)}</b> <span class="muted">s/o ${esc(s.father_name)}</span><div class="sub">Adm. ${esc(s.adm_no)} · left class ${esc(s.left_class || s.class)} on ${esc(dmy(s.left_date))} · ${esc(s.left_reason)}${s.left_detail ? ' (' + esc(s.left_detail) + ')' : ''}${s.slc_no ? ' · SLC ' + esc(s.slc_no) : ''}</div></div><span class="chev">›</span></div>`).join('')}</div>` : '<p class="muted">None recorded.</p>'}</div>`; };
+  return `<div class="card"><h2>Students who left</h2>${l.length ? `<div class="list">${l.map(s => `<div class="it tap" onclick="go('student',{mode:'edit',adm_no:'${esc(s.adm_no)}'})"><div class="grow"><b>${esc(s.name)}</b> <span class="muted">${rel(s.gender)} ${esc(s.father_name)}</span><div class="sub">Adm. ${esc(s.adm_no)} · left class ${esc(s.left_class || s.class)} on ${esc(dmy(s.left_date))} · ${esc(s.left_reason)}${s.left_detail ? ' (' + esc(s.left_detail) + ')' : ''}${s.slc_no ? ' · SLC ' + esc(s.slc_no) : ''}</div></div><span class="chev">›</span></div>`).join('')}</div>` : '<p class="muted">None recorded.</p>'}</div>`; };
 
 /* ---------- receive by SLC ---------- */
 V.slc = () => `<div class="card"><h2>Receive a student</h2><p class="muted">For a child coming from another government school in the district that uses this register. Enter that school and the leaving certificate number; the record is copied and only the class and admission number are needed.</p>

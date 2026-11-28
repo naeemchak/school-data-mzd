@@ -150,18 +150,22 @@ BIND.tatt = arg => {
 
 /* ---------- students of one class ---------- */
 V.satt = arg => { const [c, sec] = arg.cls.split('|');
-  return `<div class="card noprint"><h2>Class ${esc(c)}${sec ? '-' + esc(sec) : ''}</h2><p class="muted">${DT.words(arg.date)} · everyone is present unless tapped. Tap once for <b>absent</b>, twice for <b>leave</b>, three times for <b>half day</b>.</p><p id="scnt" class="muted"></p></div>
+  return `<div class="card noprint"><h2>Class ${esc(c)}${sec ? '-' + esc(sec) : ''}</h2><p class="muted">${DT.words(arg.date)} · everyone is present unless tapped. Choose what a tap marks, then tap the names; tap again to make a child present.</p>
+    <div class="seg" id="smode" role="group" aria-label="Tap marks"><span class="muted">Tap marks:</span><button type="button" data-m="A" class="on">Absent</button><button type="button" data-m="L">Leave</button><button type="button" data-m="H">Half day</button></div><p id="scnt" class="muted"></p></div>
     <div class="list sgrid" id="sg"></div><div class="decide"><button class="btn" id="ssv">Save class</button></div>`; };
 BIND.satt = arg => {
   const date = arg.date, m = date.slice(0, 7), [c, sec] = arg.cls.split('|');
   const kids = REG.students().filter(s => s.class === c && (s.section || '') === sec && s.adm_date <= date).sort((a, b) => Number(a.roll_no || 9999) - Number(b.roll_no || 9999) || a.name.localeCompare(b.name));
   const ex = (ATTC.month(m).students || []).find(r => r.date === date && r.class === c && (r.section || '') === sec) || {};
   const mark = {}; (ex.absent_list || '').split(' ').filter(Boolean).forEach(a => { mark[a] = 'A'; }); (ex.leave_list || '').split(' ').filter(Boolean).forEach(a => { mark[a] = 'L'; }); (ex.half_list || '').split(' ').filter(Boolean).forEach(a => { mark[a] = 'H'; });
+  let mode = 'A';
+  document.querySelectorAll('#smode button').forEach(b => b.onclick = () => { mode = b.dataset.m; document.querySelectorAll('#smode button').forEach(x => x.classList.toggle('on', x === b)); });
   const draw = () => {
-    $('#sg').innerHTML = kids.map(s => `<div class="it tap sk ${mark[s.adm_no] ? 'k' + mark[s.adm_no] : ''}" data-a="${esc(s.adm_no)}"><span class="roll">${esc(s.roll_no || '')}</span><div class="grow"><b>${esc(s.name)}</b><div class="sub">s/o ${esc(s.father_name)} · Adm. ${esc(s.adm_no)}</div></div><span class="kst">${mark[s.adm_no] === 'A' ? 'Absent' : mark[s.adm_no] === 'L' ? 'Leave' : mark[s.adm_no] === 'H' ? 'Half day' : 'Present'}</span></div>`).join('');
+    $('#sg').innerHTML = kids.map(s => `<div class="it tap sk ${mark[s.adm_no] ? 'k' + mark[s.adm_no] : ''}" data-a="${esc(s.adm_no)}"><span class="roll">${esc(s.roll_no || '')}</span><div class="grow"><b>${esc(s.name)}</b><div class="sub">${rel(s.gender)} ${esc(s.father_name)} · Adm. ${esc(s.adm_no)}</div></div><span class="kst">${mark[s.adm_no] === 'A' ? 'Absent' : mark[s.adm_no] === 'L' ? 'Leave' : mark[s.adm_no] === 'H' ? 'Half day' : 'Present'}</span></div>`).join('');
     const a = Object.values(mark).filter(x => x === 'A').length, l = Object.values(mark).filter(x => x === 'L').length, h = Object.values(mark).filter(x => x === 'H').length;
     $('#scnt').textContent = `${kids.length - a - l - h} present · ${a} absent · ${l} on leave${h ? ` · ${h} half day` : ''} · ${kids.length} in class`;
-    document.querySelectorAll('.sk').forEach(el => el.onclick = () => { const k = el.dataset.a; mark[k] = !mark[k] ? 'A' : mark[k] === 'A' ? 'L' : mark[k] === 'L' ? 'H' : undefined; if (!mark[k]) delete mark[k]; draw(); });
+    // one tap marks the chosen status (Absent, Leave or Half day); a second tap makes the child present again
+    document.querySelectorAll('.sk').forEach(el => el.onclick = () => { const k = el.dataset.a; if (mark[k] === mode) delete mark[k]; else mark[k] = mode; draw(); });
   };
   $('#ssv').onclick = () => {
     const absent = Object.keys(mark).filter(k => mark[k] === 'A'), leave = Object.keys(mark).filter(k => mark[k] === 'L'), half = Object.keys(mark).filter(k => mark[k] === 'H'), device_time = ATTC.now();
